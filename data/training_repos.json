@@ -10,23 +10,7 @@
   ],
   "repos": [
     {
-      "full_name": "pallets/flask",
-      "release_tag": null
-    },
-    {
       "full_name": "psf/requests",
-      "release_tag": null
-    },
-    {
-      "full_name": "pallets/click",
-      "release_tag": null
-    },
-    {
-      "full_name": "fastapi/fastapi",
-      "release_tag": null
-    },
-    {
-      "full_name": "encode/httpx",
       "release_tag": null
     },
     {
@@ -34,19 +18,123 @@
       "release_tag": null
     },
     {
-      "full_name": "tqdm/tqdm",
-      "release_tag": null
-    },
-    {
       "full_name": "expressjs/express",
       "release_tag": null
     },
     {
-      "full_name": "axios/axios",
+      "full_name": "chartjs/chart.js",
       "release_tag": null
     },
     {
-      "full_name": "chartjs/chart.js",
+      "full_name": "Yelp/detect-secrets",
+      "release_tag": null
+    },
+    {
+      "full_name": "lk-geimfari/mimesis",
+      "release_tag": null
+    },
+    {
+      "full_name": "googlemaps/google-maps-services-python",
+      "release_tag": null
+    },
+    {
+      "full_name": "json-editor/json-editor",
+      "release_tag": null
+    },
+    {
+      "full_name": "style-dictionary/style-dictionary",
+      "release_tag": null
+    },
+    {
+      "full_name": "frontend-collective/react-sortable-tree",
+      "release_tag": null
+    },
+    {
+      "full_name": "bethgelab/foolbox",
+      "release_tag": null
+    },
+    {
+      "full_name": "ekzhu/datasketch",
+      "release_tag": null
+    },
+    {
+      "full_name": "Pycord-Development/pycord",
+      "release_tag": null
+    },
+    {
+      "full_name": "babybuddy/babybuddy",
+      "release_tag": null
+    },
+    {
+      "full_name": "dooit-org/dooit",
+      "release_tag": null
+    },
+    {
+      "full_name": "kozakdenys/qr-code-styling",
+      "release_tag": null
+    },
+    {
+      "full_name": "maptiler/tileserver-gl",
+      "release_tag": null
+    },
+    {
+      "full_name": "infinitered/apisauce",
+      "release_tag": null
+    },
+    {
+      "full_name": "ngx-formly/ngx-formly",
+      "release_tag": null
+    },
+    {
+      "full_name": "mmcdole/gofeed",
+      "release_tag": null
+    },
+    {
+      "full_name": "eko/gocache",
+      "release_tag": null
+    },
+    {
+      "full_name": "redis/rueidis",
+      "release_tag": null
+    },
+    {
+      "full_name": "alibaba/sentinel-golang",
+      "release_tag": null
+    },
+    {
+      "full_name": "mitsuhiko/insta",
+      "release_tag": null
+    },
+    {
+      "full_name": "mitsuhiko/minijinja",
+      "release_tag": null
+    },
+    {
+      "full_name": "sharkdp/numbat",
+      "release_tag": null
+    },
+    {
+      "full_name": "standardrb/standard",
+      "release_tag": null
+    },
+    {
+      "full_name": "bensheldon/good_job",
+      "release_tag": null
+    },
+    {
+      "full_name": "rails/bootsnap",
+      "release_tag": null
+    },
+    {
+      "full_name": "socketry/async",
+      "release_tag": null
+    },
+    {
+      "full_name": "hotwired/turbo-rails",
+      "release_tag": null
+    },
+    {
+      "full_name": "reactor/reactor-netty",
       "release_tag": null
     }
   ]
