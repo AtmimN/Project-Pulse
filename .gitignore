@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Rahasia dan konfigurasi lokal
+.env
+
+# Database dan data hasil scraping
+instance/
+*.db
+*.sqlite3
+
+# Model hasil pelatihan (dibuat ulang dengan: python -m app.cli train-models)
+models/*
+!models/.gitkeep
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+
+docs/

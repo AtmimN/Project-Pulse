@@ -1,0 +1,7 @@
+{
+  "repos": [
+    {"full_name": "plankanban/planka"},
+    {"full_name": "maxcountryman/flask-login"},
+    {"full_name": "timolins/react-hot-toast"}
+  ]
+}

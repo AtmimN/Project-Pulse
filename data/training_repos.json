@@ -1,0 +1,53 @@
+{
+  "criteria": [
+    "Repositori publik, bukan fork, bukan mirror, tidak diarsipkan",
+    "Memiliki rilis stabil pertama yang jelas (tag semver >= 1.0 tanpa akhiran pre-release, termasuk bentuk dua bagian seperti 1.0), atau tag rilis ditentukan manual pada field release_tag",
+    "Usia sampai rilis stabil pertama antara 1 dan 60 bulan",
+    "Jumlah kontributor (bukan bot) sampai tanggal rilis antara 2 dan 300",
+    "Ukuran kode sumber pada tag rilis antara 1 dan 500 KLOC",
+    "Bukan monorepo raksasa, bukan repositori tutorial/contoh/daftar (awesome-list), bukan dokumentasi saja",
+    "Tidak boleh sama dengan repositori pada data/monitor_repos.json"
+  ],
+  "repos": [
+    {
+      "full_name": "pallets/flask",
+      "release_tag": null
+    },
+    {
+      "full_name": "psf/requests",
+      "release_tag": null
+    },
+    {
+      "full_name": "pallets/click",
+      "release_tag": null
+    },
+    {
+      "full_name": "fastapi/fastapi",
+      "release_tag": null
+    },
+    {
+      "full_name": "encode/httpx",
+      "release_tag": null
+    },
+    {
+      "full_name": "textualize/rich",
+      "release_tag": null
+    },
+    {
+      "full_name": "tqdm/tqdm",
+      "release_tag": null
+    },
+    {
+      "full_name": "expressjs/express",
+      "release_tag": null
+    },
+    {
+      "full_name": "axios/axios",
+      "release_tag": null
+    },
+    {
+      "full_name": "chartjs/chart.js",
+      "release_tag": null
+    }
+  ]
+}
