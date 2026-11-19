@@ -48,7 +48,7 @@ Kunci rancangan:
 | `data/training_repos.json` | Kriteria repositori latih; daftar `repos` **diisi pemilik**. |
 | `data/nasa93/` | Tempat berkas NASA93 (diisi pemilik). |
 | `data/labels/` | Tempat label sentimen manual (dibuat pemilik). |
-| `.gitignore`, `README.md` | Kerangka awal. README final ditulis di milestone terakhir. |
+| `.gitignore`, `.env.example`, `README.md` | Kerangka awal. `.env.example` sudah berisi seluruh variabel lingkungan; jangan menambah variabel baru kecuali spesifikasi memintanya. README final ditulis di milestone terakhir. |
 
 ## 3. Cakupan
 

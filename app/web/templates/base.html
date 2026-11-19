@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ProjectPulse — Penilaian Kesehatan Proyek Software{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header class="navbar">
+        <nav class="nav-container">
+            <a href="{{ url_for('main.index') }}" class="nav-brand">Project<span>Pulse</span></a>
+            <ul class="nav-links">
+                <li><a href="{{ url_for('main.index') }}" class="{% if request.endpoint == 'main.index' %}active{% endif %}">Beranda</a></li>
+                <li><a href="{{ url_for('main.chat_page') }}" class="{% if request.endpoint == 'main.chat_page' %}active{% endif %}">Chatbot</a></li>
+                <li><a href="{{ url_for('main.estimate_page') }}" class="{% if request.endpoint == 'main.estimate_page' %}active{% endif %}">Estimasi</a></li>
+                <li><a href="{{ url_for('main.repos_page') }}" class="{% if request.endpoint == 'main.repos_page' %}active{% endif %}">Pulse Repositori</a></li>
+                <li><a href="{{ url_for('main.dashboard_page') }}" class="{% if request.endpoint == 'main.dashboard_page' %}active{% endif %}">Dashboard</a></li>
+                <li><a href="{{ url_for('main.admin_page') }}" class="{% if 'admin' in (request.endpoint or '') %}active{% endif %}">Admin</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>ProjectPulse &copy; 2026 &mdash; Aplikasi Web & Scripting Language. SQLite Mode WAL.</p>
+    </footer>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

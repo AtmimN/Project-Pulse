@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Beranda — ProjectPulse{% endblock %}
+
+{% block content %}
+<section class="hero-section">
+    <h1 class="hero-title">ProjectPulse</h1>
+    <p class="hero-subtitle">
+        Menilai kesehatan proyek perangkat lunak dari dua sisi: 
+        <strong>kecepatan</strong> (estimasi durasi kalender &amp; usaha tim) dan 
+        <strong>suasana tim/pengguna</strong> (analisis sentimen komentar issue &amp; PR).
+    </p>
+    <div class="hero-badges">
+        <span class="badge badge-success">&bull; Status: Milestone M0 Aktif</span>
+        <span class="badge">SQLite WAL Mode</span>
+        <span class="badge">Flask Web</span>
+        <span class="badge">Telegram Bot</span>
+        <span class="badge">Incremental Scraper</span>
+    </div>
+</section>
+
+<section class="grid-cards">
+    <article class="card">
+        <h2 class="card-title">Chatbot PM-Bot</h2>
+        <p class="card-text">
+            Asisten cerdas rule-based untuk metodologi manajemen proyek, estimasi, dan pemantauan sentimen repositori secara interaktif.
+        </p>
+        <a href="{{ url_for('main.chat_page') }}" class="btn btn-primary">Buka Chatbot &rarr;</a>
+    </article>
+
+    <article class="card">
+        <h2 class="card-title">Estimasi Proyek</h2>
+        <p class="card-text">
+            Dua model regresi linear berdampingan: Model A (durasi kalender dari data repositori GitHub) dan Model B (usaha dari benchmark NASA93 COCOMO).
+        </p>
+        <a href="{{ url_for('main.estimate_page') }}" class="btn btn-primary">Kalkulator Estimasi &rarr;</a>
+    </article>
+
+    <article class="card">
+        <h2 class="card-title">Pulse Repositori</h2>
+        <p class="card-text">
+            Pantau sentimen komentar issue dan review PR terkini berbahasa Inggris menggunakan VADER leksikon teknis dan tren 30 hari.
+        </p>
+        <a href="{{ url_for('main.repos_page') }}" class="btn btn-primary">Lihat Sentimen &rarr;</a>
+    </article>
+
+    <article class="card">
+        <h2 class="card-title">Dashboard Visual</h2>
+        <p class="card-text">
+            Visualisasi data komprehensif dengan Chart.js: ringkasan sentimen, tren bulanan, evaluasi model regresi, dan status penjadwal harian.
+        </p>
+        <a href="{{ url_for('main.dashboard_page') }}" class="btn btn-primary">Lihat Dashboard &rarr;</a>
+    </article>
+</section>
+
+<section class="system-status">
+    <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Informasi Lingkungan &amp; Basis Data</h3>
+    <p style="font-size: 0.9rem; color: var(--text-muted);">
+        ProjectPulse berjalan dalam arsitektur tiga proses mandiri (Web, Bot Telegram, dan Penjadwal Scraping) yang berbagi basis data SQLite berkinerja tinggi.
+    </p>
+    <div class="status-grid">
+        <div class="status-item">
+            <div class="status-label">Database Path</div>
+            <div class="status-val">{{ db_path }}</div>
+        </div>
+        <div class="status-item">
+            <div class="status-label">Journal Mode</div>
+            <div class="status-val">{{ journal_mode | upper }}</div>
+        </div>
+        <div class="status-item">
+            <div class="status-label">Foreign Keys</div>
+            <div class="status-val">{{ "Aktif" if foreign_keys else "Nonaktif" }}</div>
+        </div>
+        <div class="status-item">
+            <div class="status-label">Zona Waktu</div>
+            <div class="status-val">{{ timezone }}</div>
+        </div>
+    </div>
+</section>
+{% endblock %}

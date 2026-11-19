@@ -1,0 +1,58 @@
+"""Repositori akses tabel repos."""
+from __future__ import annotations
+
+import sqlite3
+from typing import Any
+
+
+def add_repo(
+    conn: sqlite3.Connection,
+    full_name: str,
+    kind: str,
+    active: int = 1,
+) -> int:
+    """Menambahkan repositori baru dan mengembalikan ID baris yang dibuat."""
+    sql = "INSERT INTO repos (full_name, kind, active) VALUES (?, ?, ?)"
+    cursor = conn.execute(sql, (full_name.strip(), kind, active))
+    return int(cursor.lastrowid)
+
+
+def get_by_id(conn: sqlite3.Connection, repo_id: int) -> dict[str, Any] | None:
+    """Mengambil data repositori berdasarkan ID uniknya."""
+    sql = "SELECT id, full_name, kind, active, added_at FROM repos WHERE id = ?"
+    row = conn.execute(sql, (repo_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_by_full_name(conn: sqlite3.Connection, full_name: str) -> dict[str, Any] | None:
+    """Mengambil data repositori berdasarkan full_name secara case-insensitive."""
+    sql = "SELECT id, full_name, kind, active, added_at FROM repos WHERE LOWER(full_name) = LOWER(?)"
+    row = conn.execute(sql, (full_name.strip(),)).fetchone()
+    return dict(row) if row else None
+
+
+def list_repos(
+    conn: sqlite3.Connection,
+    kind: str | None = None,
+    active_only: bool = False,
+) -> list[dict[str, Any]]:
+    """Mengambil daftar repositori dengan filter jenis dan status aktif."""
+    clauses: list[str] = []
+    params: list[Any] = []
+
+    if kind:
+        clauses.append("kind = ?")
+        params.append(kind)
+    if active_only:
+        clauses.append("active = 1")
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT id, full_name, kind, active, added_at FROM repos {where} ORDER BY id ASC"
+    rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_active(conn: sqlite3.Connection, repo_id: int, active: int) -> None:
+    """Mengubah status aktif/nonaktif sebuah repositori."""
+    sql = "UPDATE repos SET active = ? WHERE id = ?"
+    conn.execute(sql, (active, repo_id))

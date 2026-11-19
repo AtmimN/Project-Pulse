@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} — ProjectPulse{% endblock %}
+
+{% block content %}
+<section class="card" style="max-width: 700px; margin: 3rem auto; text-align: center; padding: 3rem 2rem;">
+    <h1 style="font-size: 1.75rem; margin-bottom: 1rem;">{{ title }}</h1>
+    <p style="color: var(--text-muted); margin-bottom: 2rem;">
+        {{ description }}
+    </p>
+    <div>
+        <span class="badge" style="margin-bottom: 1.5rem;">Target: {{ milestone }}</span>
+    </div>
+    <a href="{{ url_for('main.index') }}" class="btn btn-outline">&larr; Kembali ke Beranda</a>
+</section>
+{% endblock %}
