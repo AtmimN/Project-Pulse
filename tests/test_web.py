@@ -31,12 +31,38 @@ def test_chat_page(client: FlaskClient) -> None:
 
 
 def test_estimate_page(client: FlaskClient) -> None:
-    """Memastikan halaman estimasi proyek termuat dengan benar."""
+    """Memastikan halaman estimasi proyek termuat dengan teks peringatan dan penjelasan M2-rev."""
     response = client.get("/estimasi")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "Kalkulator Estimasi Proyek Berdampingan" in html
     assert "estimateForm" in html
+    assert "Model A — pola historis repositori GitHub" in html
+    assert "pendekatan kontributor kumulatif" in html
+    assert "Model A mempelajari korelasi historis, bukan sebab-akibat" in html
+    assert "Mengapa Model A dan Model B bisa berlawanan arah?" in html
+
+
+def test_dashboard_and_api_endpoints(client: FlaskClient) -> None:
+    """Memastikan halaman dashboard dan endpoint metrik regresi mengembalikan data valid."""
+    resp_dash = client.get("/dashboard")
+    assert resp_dash.status_code == 200
+    html = resp_dash.get_data(as_text=True)
+    assert "Dashboard Analitik" in html
+    assert "Model A" in html
+    assert "Milestone" in html
+
+    # Endpoint REST API Model A
+    resp_a = client.get("/api/dashboard/regression-a")
+    assert resp_a.status_code == 200
+    data_a = resp_a.get_json()
+    assert isinstance(data_a, dict)
+
+    # Endpoint REST API Model B
+    resp_b = client.get("/api/dashboard/regression-b")
+    assert resp_b.status_code == 200
+    data_b = resp_b.get_json()
+    assert isinstance(data_b, dict)
 
 
 def test_placeholder_pages(client: FlaskClient) -> None:

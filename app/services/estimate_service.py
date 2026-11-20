@@ -133,13 +133,38 @@ def _calc_model_a(
     adj = calculate_adjustment_factor(acap, pcap, aexp, multipliers)
     adj_dur = max(0.1, round(base_dur * adj["factor"], 2))
 
+    metrics = bundle.get("metrics", {})
+    cv_mae = metrics.get("cv_mae", mae)
+    base_cv = metrics.get("baseline_mae_cv")
+    imp_pct = metrics.get("improvement_pct", 0.0)
+    cv_r2 = metrics.get("cv_r2")
+    holdout_reliable = metrics.get("holdout_reliable", True)
+    n_test = metrics.get("n_test", 0)
+
+    if base_cv is not None:
+        if imp_pct > 0:
+            quality_text = f"MAE {cv_mae} bulan; tebak median {base_cv} bulan (lebih baik {int(round(imp_pct))}%)"
+        else:
+            quality_text = f"MAE {cv_mae} bulan; tidak lebih baik dari tebakan median ({base_cv} bulan)"
+    else:
+        quality_text = f"MAE {cv_mae} bulan"
+
     return {
         "status": "ready",
         "base_duration": base_dur,
         "adjustment_factor": adj["factor"],
         "adjusted_duration": adj_dur,
-        "mae": mae,
-        "range": [max(0.1, round(adj_dur - mae, 2)), round(adj_dur + mae, 2)],
+        "mae": cv_mae,
+        "range": [max(0.1, round(adj_dur - cv_mae, 2)), round(adj_dur + cv_mae, 2)],
+        "cv_mae": cv_mae,
+        "cv_r2": cv_r2,
+        "baseline_mae_cv": base_cv,
+        "improvement_pct": imp_pct,
+        "holdout_reliable": holdout_reliable,
+        "n_test": n_test,
+        "quality_text": quality_text,
+        "holdout_label": f"n = {n_test}" if holdout_reliable else f"tidak andal (n = {n_test})",
+        "diagnostics": metrics.get("diagnostics"),
         "warnings": warnings,
     }
 

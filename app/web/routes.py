@@ -8,7 +8,7 @@ from app import config
 from app.chatbot.engine import load_intents
 from app.db.connection import get_connection
 from app.db import repos_repo
-from app.services import chat_service, estimate_service
+from app.services import chat_service, dashboard_service, estimate_service
 
 main_bp = Blueprint("main", __name__)
 
@@ -148,13 +148,35 @@ def repos_page() -> str:
 
 @main_bp.route("/dashboard")
 def dashboard_page() -> str:
-    """Menampilkan halaman dashboard analitik (disediakan pada Milestone M6)."""
+    """Menampilkan halaman dashboard analitik dan metrik regresi."""
+    db_target = current_app.config.get("DATABASE_PATH")
+    metrics_a = dashboard_service.get_regression_a_data(db_path=db_target)
+    metrics_b = dashboard_service.get_regression_b_data()
     return render_template(
-        "placeholder.html",
-        title="Dashboard Visual Chart.js",
-        description="Visualisasi komprehensif metrik sentimen, regresi, dan status penjadwal.",
-        milestone="Milestone M6",
+        "dashboard.html",
+        metrics_a=metrics_a,
+        metrics_b=metrics_b,
+        milestone="Milestone M2-rev / M6",
     )
+
+
+@main_bp.route("/api/dashboard/regression-a")
+def api_dashboard_regression_a() -> tuple[Response, int]:
+    """Endpoint REST API metrik dan diagnostik Model A untuk dashboard."""
+    db_target = current_app.config.get("DATABASE_PATH")
+    data = dashboard_service.get_regression_a_data(db_path=db_target)
+    if not data:
+        return jsonify({"status": "not_trained", "message": "Model A belum dilatih."}), 200
+    return jsonify(data), 200
+
+
+@main_bp.route("/api/dashboard/regression-b")
+def api_dashboard_regression_b() -> tuple[Response, int]:
+    """Endpoint REST API metrik Model B untuk dashboard."""
+    data = dashboard_service.get_regression_b_data()
+    if not data:
+        return jsonify({"status": "not_trained", "message": "Model B belum dilatih."}), 200
+    return jsonify(data), 200
 
 
 @main_bp.route("/admin")

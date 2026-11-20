@@ -142,3 +142,85 @@ def test_workload_and_comparison() -> None:
 
     res_comp_flag = compare_models(duration_a=5.0, duration_b=15.0)  # rasio 3.0x > 2.0x
     assert res_comp_flag["is_flagged"] is True
+
+
+def test_model_a_diagnostics_and_repeated_cv() -> None:
+    """Menguji metrik M2-rev: RepeatedKFold, pembanding tebak-median, R2 out-of-fold, dan diagnostik."""
+    np.random.seed(42)
+    n = 25  # n_test akan 5 (< 10 -> holdout_reliable False)
+    contribs = np.random.randint(2, 30, size=n)
+    tasks = np.random.randint(10, 100, size=n)
+    kloc = np.random.uniform(1.0, 20.0, size=n)
+    duration = 0.5 * contribs + 0.1 * tasks + 0.4 * kloc + np.random.normal(0, 0.5, size=n)
+    duration = np.maximum(1.0, duration)
+
+    df_synth = pd.DataFrame({
+        "n_contributors": contribs,
+        "n_work_items": tasks,
+        "kloc": kloc,
+        "duration_months": duration,
+    })
+
+    _, metrics = train_model_a(df_synth)
+
+    # 1. Metrik validasi silang & pembanding tebak-median
+    assert "cv_mae" in metrics
+    assert "cv_r2" in metrics
+    assert "baseline_mae_cv" in metrics
+    assert "improvement_pct" in metrics
+    assert metrics["cv_mae"] > 0
+    assert metrics["baseline_mae_cv"] > 0
+
+    # 2. Holdout reliability (n_test = 5 < 10 -> False)
+    assert metrics["n_test"] == 5
+    assert metrics["holdout_reliable"] is False
+
+    # 3. Diagnostik: Spearman correlation, kestabilan tanda, koefisien terstandar
+    diag = metrics["diagnostics"]
+    assert "spearman_correlation" in diag
+    assert "duration_vs_n_contributors" in diag["spearman_correlation"]
+    assert "duration_vs_n_work_items" in diag["spearman_correlation"]
+    assert "duration_vs_kloc" in diag["spearman_correlation"]
+
+    assert "sign_stability" in diag
+    assert "n_contributors" in diag["sign_stability"]
+    assert 0 <= diag["sign_stability"]["n_contributors"] <= 100
+
+    assert "standardized_coefficients" in diag
+    assert "n_contributors" in diag["standardized_coefficients"]
+
+    assert "finding" in diag
+    assert "kontributor kumulatif" in diag["finding"]
+
+
+def test_model_a_determinism() -> None:
+    """Memastikan pelatihan dua kali pada data identik menghasilkan metrik dan diagnostik sama persis."""
+    np.random.seed(42)
+    n = 30
+    df_data = pd.DataFrame({
+        "n_contributors": np.random.randint(2, 25, size=n),
+        "n_work_items": np.random.randint(5, 80, size=n),
+        "kloc": np.random.uniform(2.0, 15.0, size=n),
+        "duration_months": np.random.uniform(2.0, 24.0, size=n),
+    })
+
+    _, metrics1 = train_model_a(df_data)
+    _, metrics2 = train_model_a(df_data)
+
+    assert metrics1["cv_mae"] == metrics2["cv_mae"]
+    assert metrics1["cv_r2"] == metrics2["cv_r2"]
+    assert metrics1["baseline_mae_cv"] == metrics2["baseline_mae_cv"]
+    assert metrics1["coefficients"] == metrics2["coefficients"]
+    assert metrics1["diagnostics"]["sign_stability"] == metrics2["diagnostics"]["sign_stability"]
+    assert metrics1["diagnostics"]["standardized_coefficients"] == metrics2["diagnostics"]["standardized_coefficients"]
+
+
+def test_code_inspection_no_sign_flipping() -> None:
+    """Memastikan kode tidak membalik tanda koefisien atau membuang n_contributors (DoD M2-rev)."""
+    model_a_code = Path("app/estimator/model_a.py").read_text(encoding="utf-8")
+    assert "n_contributors" in model_a_code
+    assert "-abs(" not in model_a_code
+    assert "=-np.abs(" not in model_a_code
+    assert "=-abs(" not in model_a_code
+    assert "forced_negative" not in model_a_code
+

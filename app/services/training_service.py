@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import pandas as pd
@@ -71,6 +72,29 @@ def _clone_or_fetch_repo(full_name: str, runner: GitRunner) -> Path:
     return dest
 
 
+def _parse_iso_date(dt_str: str) -> datetime:
+    """Mengurai string ISO 8601 menjadi objek datetime timezone-aware UTC."""
+    cleaned = dt_str.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(cleaned)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _is_history_gap_exceeded(first_dt_str: str, created_at_str: str) -> bool:
+    """Memeriksa apakah commit pertama lebih awal dari tanggal repo melebihi ambang batas."""
+    try:
+        first_dt = _parse_iso_date(first_dt_str)
+        created_dt = _parse_iso_date(created_at_str)
+        if first_dt < created_dt:
+            gap_days = (created_dt - first_dt).total_seconds() / 86400.0
+            gap_months = gap_days / 30.4375
+            return gap_months > config.MAX_HISTORY_GAP_MONTHS
+    except Exception:
+        pass
+    return False
+
+
 def _process_single_repo(
     entry: dict[str, Any],
     monitor_repos: list[str],
@@ -102,6 +126,11 @@ def _process_single_repo(
         if repo_info.get("fork") or repo_info.get("archived") or repo_info.get("private"):
             _record_exclusion(db_path, repo_id, "fork/arsip/privat")
             return None, {"full_name": full_name, "reason": "fork/arsip/privat"}
+
+        repo_created_at = repo_info.get("created_at")
+        if not repo_created_at:
+            _record_exclusion(db_path, repo_id, "data pembuatan repositori tidak tersedia")
+            return None, {"full_name": full_name, "reason": "data pembuatan repositori tidak tersedia"}
     except Exception as err:
         _record_exclusion(db_path, repo_id, f"gagal api: {err}")
         return None, {"full_name": full_name, "reason": f"gagal api: {err}"}
@@ -110,24 +139,33 @@ def _process_single_repo(
     try:
         tag, first_dt, rel_dt, dur, n_contrib, kloc = _extract_git_metrics(clone_dest, manual_tag, runner)
         if not tag:
-            _record_exclusion(db_path, repo_id, "tidak ada rilis stabil")
+            _record_exclusion(db_path, repo_id, "tidak ada rilis stabil", repo_created_at)
             return None, {"full_name": full_name, "reason": "tidak ada rilis stabil"}
 
         if dur <= 0:
-            _record_exclusion(db_path, repo_id, "durasi tidak valid (<= 0)")
+            _record_exclusion(db_path, repo_id, "durasi tidak valid (<= 0)", repo_created_at)
             return None, {"full_name": full_name, "reason": "durasi tidak valid"}
+
+        if _is_history_gap_exceeded(first_dt, repo_created_at):
+            _record_exclusion(db_path, repo_id, "riwayat commit diimpor atau fork", repo_created_at)
+            return None, {"full_name": full_name, "reason": "riwayat commit diimpor atau fork"}
 
         q_iss = f"repo:{full_name} is:issue created:<={rel_dt[:10]}"
         q_prs = f"repo:{full_name} is:pr created:<={rel_dt[:10]}"
         n_work = client.search_count(q_iss) + client.search_count(q_prs)
 
+        if n_work <= 0:
+            reason = "jumlah issue+PR nol (data issue tidak tersedia atau riwayat diimpor)"
+            _record_exclusion(db_path, repo_id, reason, repo_created_at)
+            return None, {"full_name": full_name, "reason": reason}
+
         if not (1.0 <= dur <= 60.0 and 2 <= n_contrib <= 300 and 1.0 <= kloc <= 500.0):
-            _record_exclusion(db_path, repo_id, "di luar kriteria numerik")
+            _record_exclusion(db_path, repo_id, "di luar kriteria numerik", repo_created_at)
             return None, {"full_name": full_name, "reason": "di luar kriteria numerik"}
 
         with connection.transaction(db_path) as conn:
             training_rows_repo.add_training_row(
-                conn, repo_id, tag, rel_dt, first_dt, dur, n_contrib, n_work, kloc, 1, None
+                conn, repo_id, tag, rel_dt, first_dt, dur, n_contrib, n_work, kloc, 1, None, repo_created_at
             )
         return {
             "full_name": full_name, "release_tag": tag, "duration_months": dur,
@@ -189,13 +227,27 @@ def build_training_data(
     }
 
 
-def _record_exclusion(db_path: str | Path | None, repo_id: int, reason: str) -> None:
+def _record_exclusion(
+    db_path: str | Path | None,
+    repo_id: int,
+    reason: str,
+    repo_created_at: str | None = None,
+) -> None:
     """Mencatat baris pengecualian repositori latih ke tabel training_rows."""
     with connection.transaction(db_path) as conn:
         training_rows_repo.add_training_row(
-            conn=conn, repo_id=repo_id, release_tag=None, release_date=None,
-            first_commit_date=None, duration_months=None, n_contributors=None,
-            n_work_items=None, kloc=None, included=0, exclusion_reason=reason,
+            conn=conn,
+            repo_id=repo_id,
+            release_tag=None,
+            release_date=None,
+            first_commit_date=None,
+            duration_months=None,
+            n_contributors=None,
+            n_work_items=None,
+            kloc=None,
+            included=0,
+            exclusion_reason=reason,
+            repo_created_at=repo_created_at,
         )
 
 

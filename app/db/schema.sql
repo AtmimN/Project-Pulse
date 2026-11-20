@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS training_rows (
     release_tag       TEXT,
     release_date      TEXT,
     first_commit_date TEXT,
+    repo_created_at   TEXT,
     duration_months   REAL,
     n_contributors    INTEGER,
     n_work_items      INTEGER,

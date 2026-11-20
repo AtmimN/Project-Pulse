@@ -54,3 +54,6 @@ def init_db(custom_path: str | Path | None = None) -> None:
 
     with transaction(custom_path) as conn:
         conn.executescript(schema_sql)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(training_rows)").fetchall()]
+        if cols and "repo_created_at" not in cols:
+            conn.execute("ALTER TABLE training_rows ADD COLUMN repo_created_at TEXT;")

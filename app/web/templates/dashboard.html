@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Analitik & Model Regresi — ProjectPulse{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 class="hero-title" style="font-size: 1.75rem; margin-bottom: 0.25rem;">Dashboard Analitik Proyek</h1>
+            <p class="hero-subtitle" style="font-size: 0.95rem; margin-bottom: 0;">
+                Evaluasi performa model regresi estimasi, diagnostik korelasi historis, dan status metrik proyek.
+            </p>
+        </div>
+        <span class="badge" style="background-color: var(--primary-color); color: white; padding: 0.4rem 0.8rem; border-radius: 9999px; font-size: 0.8rem;">
+            {{ milestone }}
+        </span>
+    </div>
+</section>
+
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+    <!-- Panel Model A -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+            <div>
+                <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">Model A — Pola Historis Repositori GitHub</h2>
+                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                    Linear Regression (varian {{ metrics_a.variant if metrics_a else '-' }}) memprediksi durasi kalender (bulan).
+                </div>
+            </div>
+            <span class="badge">Model A</span>
+        </div>
+
+        {% if metrics_a %}
+            {% if metrics_a.warning_insufficient %}
+            <div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 0.75rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;">
+                <strong>Peringatan:</strong> Jumlah data latih ({{ metrics_a.n_training_rows }}) kurang dari batas minimal (30 baris). Hasil model belum sepenuhnya andal.
+            </div>
+            {% endif %}
+
+            <!-- Kartu Metrik Utama -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+                <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Validasi Silang (Utama)</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--primary-color);">
+                        MAE {{ metrics_a.cv_mae }} bulan
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        {% if metrics_a.improvement_pct > 0 %}
+                            Tebak median: {{ metrics_a.baseline_mae_cv }} bln (lebih baik {{ metrics_a.improvement_pct }}%)
+                        {% else %}
+                            Tidak lebih baik dari tebakan median ({{ metrics_a.baseline_mae_cv }} bln)
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">R&sup2; Validasi Silang (Out-of-Fold)</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">
+                        {{ metrics_a.cv_r2 }}
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        Rata-rata 20x pengulangan 5-fold
+                    </div>
+                </div>
+
+                <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Data Uji (Hold-out 20%)</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">
+                        MAE {{ metrics_a.test_mae }} bulan
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+                        {% if not metrics_a.holdout_reliable %}
+                            <span style="color: #d97706; font-weight: 600;">Pelengkap: tidak andal (n = {{ metrics_a.n_test }})</span>
+                        {% else %}
+                            R&sup2;: {{ metrics_a.test_r2 }} (n = {{ metrics_a.n_test }})
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tabel Diagnostik Model A -->
+            <div style="margin-top: 1rem;">
+                <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Tabel Diagnostik Model A</h3>
+                {% if metrics_a.diagnostics %}
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--border-color); background-color: #f8fafc;">
+                                <th style="padding: 0.5rem;">Fitur</th>
+                                <th style="padding: 0.5rem;">Korelasi Spearman dgn Durasi (&rho;)</th>
+                                <th style="padding: 0.5rem;">Kestabilan Tanda (&gt;0)</th>
+                                <th style="padding: 0.5rem;">Koefisien Terstandar (z-score)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 0.5rem;"><strong>n_contributors</strong></td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_n_contributors }}</td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.n_contributors }}%</td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.n_contributors }}</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 0.5rem;"><strong>n_work_items</strong></td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_n_work_items }}</td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.n_work_items }}%</td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.n_work_items }}</td>
+                            </tr>
+                            <tr style="border-bottom: 1px solid var(--border-color);">
+                                <td style="padding: 0.5rem;"><strong>kloc</strong></td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_kloc }}</td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.kloc }}%</td>
+                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.kloc }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="background-color: #f1f5f9; padding: 0.75rem; border-radius: 6px; font-size: 0.85rem; margin-top: 0.75rem;">
+                    <strong>Temuan Diagnostik:</strong> {{ metrics_a.diagnostics.finding }}
+                </div>
+                {% endif %}
+            </div>
+        {% else %}
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+                <p>Model A belum dilatih. Jalankan perintah <code>python -m app.cli train-models</code> untuk menghasilkan model dan metrik.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Panel Model B -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+            <div>
+                <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">Model B — Benchmark Usaha NASA93 (COCOMO81)</h2>
+                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                    Memprediksi usaha (person-bulan), bukan durasi kalender langsung.
+                </div>
+            </div>
+            <span class="badge">Model B</span>
+        </div>
+
+        {% if metrics_b %}
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+                <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Akurasi Uji (MAE Skala Asli)</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: #0f766e;">
+                        &plusmn;{{ metrics_b.test_mae_person_months }} person-bulan
+                    </div>
+                </div>
+
+                <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">R&sup2; Skala Log / Asli</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">
+                        {{ metrics_b.test_r2_log }} / {{ metrics_b.test_r2_orig }}
+                    </div>
+                </div>
+
+                <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Jumlah Sampel NASA93</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">
+                        {{ metrics_b.n_train + metrics_b.n_test }} proyek
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
+                <p>Model B belum dilatih atau berkas dataset NASA93 belum tersedia.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Panel Informasi Fitur Berikutnya -->
+    <div class="card" style="border-style: dashed; background-color: #f8fafc;">
+        <h3 style="font-size: 1rem; margin-bottom: 0.5rem; color: var(--text-muted);">Grafik Sentimen, Alert, dan Penjadwal</h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0;">
+            Komposisi sentimen 30 hari, grafik tren indeks sentimen bulanan, log penjadwal, dan riwayat alert aktif akan ditampilkan pada penyelesaian Milestone M3 &ndash; M6.
+        </p>
+    </div>
+</div>
+{% endblock %}

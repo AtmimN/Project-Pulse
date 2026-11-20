@@ -17,13 +17,14 @@ def add_training_row(
     kloc: float | None,
     included: int = 1,
     exclusion_reason: str | None = None,
+    repo_created_at: str | None = None,
 ) -> int:
     """Menyimpan satu baris data repositori latih ke tabel training_rows."""
     sql = (
         "INSERT INTO training_rows "
-        "(repo_id, release_tag, release_date, first_commit_date, duration_months, "
-        "n_contributors, n_work_items, kloc, included, exclusion_reason) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "(repo_id, release_tag, release_date, first_commit_date, repo_created_at, "
+        "duration_months, n_contributors, n_work_items, kloc, included, exclusion_reason) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     cursor = conn.execute(
         sql,
@@ -32,6 +33,7 @@ def add_training_row(
             release_tag,
             release_date,
             first_commit_date,
+            repo_created_at,
             duration_months,
             n_contributors,
             n_work_items,

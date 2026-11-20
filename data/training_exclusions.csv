@@ -1,5 +1,3 @@
 full_name,reason
-psf/requests,error: 'NoneType' object has no attribute 'strip'
-redis/rueidis,error: 'NoneType' object has no attribute 'strip'
-rails/bootsnap,error: 'NoneType' object has no attribute 'strip'
-reactor/reactor-netty,error: 'NoneType' object has no attribute 'strip'
+json-editor/json-editor,riwayat commit diimpor atau fork
+Pycord-Development/pycord,riwayat commit diimpor atau fork

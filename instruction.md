@@ -77,6 +77,7 @@ Kerjakan berurutan. Setelah tiap milestone selesai, **berhenti sebentar dan beri
 | M0 | Kerangka proyek: struktur folder, `requirements.txt`, `create_app`, konfigurasi, skema database (mode WAL), CLI | Aplikasi kosong berjalan dan halaman beranda tampil |
 | M1 | Chatbot dipindahkan dari PM-Bot (tanpa tema) + intent baru + halaman chat | Tes chatbot lulus dan halaman chat berfungsi |
 | M2 | Pipeline data repositori latih (klien GitHub, metrik git, KLOC), Model A, Model B (NASA93), halaman estimasi berdampingan | Tes lulus dengan repositori git lokal tiruan; pelatihan Model B jalan jika NASA93 ada |
+| M2-rev | Revisi data latih (aturan kualitas data) dan Model A (pembanding, diagnostik, penjelasan di UI); lihat `03` bagian 3 dan 6, `04` bagian 4. Terapkan pada kode yang sudah ada, jangan menulis ulang. | Tes baru lulus; pemilik membangun ulang data latih dan melatih ulang model |
 | M3 | Sentimen Inggris (+ validasi) dan scraper komentar/rilis incremental dengan batas data | Tes sentimen dan scraping lulus (klien tiruan) |
 | M4 | Mesin alert + penjadwal (harian + susulan) + log eksekusi + backtest alert | Tes alert dan penjadwal lulus |
 | M5 | Bot Telegram: perintah, notifier, digest harian | Tes bot lulus dengan klien tiruan |

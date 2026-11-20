@@ -6,7 +6,9 @@
     "Jumlah kontributor (bukan bot) sampai tanggal rilis antara 2 dan 300",
     "Ukuran kode sumber pada tag rilis antara 1 dan 500 KLOC",
     "Bukan monorepo raksasa, bukan repositori tutorial/contoh/daftar (awesome-list), bukan dokumentasi saja",
-    "Tidak boleh sama dengan repositori pada data/monitor_repos.json"
+    "Tidak boleh sama dengan repositori pada data/monitor_repos.json",
+    "Jumlah issue + PR sampai tanggal rilis lebih dari 0",
+    "Riwayat commit bukan hasil impor atau fork: commit pertama tidak lebih dari 6 bulan sebelum tanggal pembuatan repositori di GitHub"
   ],
   "repos": [
     {
