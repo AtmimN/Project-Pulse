@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Chatbot PM-Bot — ProjectPulse{% endblock %}
+
+{% block content %}
+<div class="chat-container">
+    <div class="chat-header">
+        <div class="chat-header-info">
+            <span class="chat-avatar">🤖</span>
+            <div>
+                <h1 class="chat-title">{{ bot_name }}</h1>
+                <p class="chat-status">&bull; Siap membantu manajemen proyek, estimasi, dan sentimen</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-body" id="chatMessages">
+        <div class="message-row message-bot">
+            <div class="message-bubble">
+                <p class="message-text">{{ greeting }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-suggestions" id="chatSuggestions">
+        {% for s in suggestions %}
+        <button type="button" class="suggestion-chip" data-text="{{ s }}">{{ s }}</button>
+        {% endfor %}
+    </div>
+
+    <div class="chat-input-bar">
+        <form id="chatForm" class="chat-form">
+            <input 
+                type="text" 
+                id="messageInput" 
+                class="chat-input" 
+                placeholder="Ketik pertanyaanmu di sini... (maks 500 karakter)" 
+                maxlength="500" 
+                autocomplete="off" 
+                required 
+            />
+            <button type="submit" id="sendBtn" class="btn btn-primary chat-send-btn">Kirim</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const chatMessages = document.getElementById("chatMessages");
+    const chatForm = document.getElementById("chatForm");
+    const messageInput = document.getElementById("messageInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const suggestions = document.querySelectorAll(".suggestion-chip");
+
+    function scrollToBottom() {
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function appendMessage(text, sender) {
+        const row = document.createElement("div");
+        row.className = "message-row message-" + sender;
+
+        const bubble = document.createElement("div");
+        bubble.className = "message-bubble";
+
+        const p = document.createElement("p");
+        p.className = "message-text";
+        // Selalu gunakan textContent untuk mencegah XSS
+        p.textContent = text;
+
+        bubble.appendChild(p);
+        row.appendChild(bubble);
+        chatMessages.appendChild(row);
+        scrollToBottom();
+    }
+
+    async function sendMessage(text) {
+        const cleanText = text.trim();
+        if (!cleanText) return;
+
+        appendMessage(cleanText, "user");
+        messageInput.value = "";
+        sendBtn.disabled = true;
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ message: cleanText })
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                appendMessage(data.reply, "bot");
+            } else {
+                appendMessage(data.error || "Terjadi kesalahan saat memproses pesan.", "bot");
+            }
+        } catch (error) {
+            appendMessage("Gagal terhubung ke server chatbot.", "bot");
+        } finally {
+            sendBtn.disabled = false;
+            messageInput.focus();
+        }
+    }
+
+    chatForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        sendMessage(messageInput.value);
+    });
+
+    suggestions.forEach(function (chip) {
+        chip.addEventListener("click", function () {
+            const query = this.getAttribute("data-text");
+            if (query) {
+                sendMessage(query);
+            }
+        });
+    });
+
+    messageInput.focus();
+});
+</script>
+{% endblock %}

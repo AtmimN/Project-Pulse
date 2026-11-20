@@ -1,12 +1,22 @@
 """Modul rute tampilan web utama untuk ProjectPulse."""
 from __future__ import annotations
 
-from flask import Blueprint, current_app, render_template
+import uuid
+from flask import Blueprint, current_app, jsonify, render_template, request, session, Response
 
 from app import config
+from app.chatbot.engine import load_intents
 from app.db.connection import get_connection
+from app.services import chat_service
 
 main_bp = Blueprint("main", __name__)
+
+
+def _get_session_id() -> str:
+    """Mengambil atau membuat ID sesi acak pengunjung."""
+    if "sid" not in session:
+        session["sid"] = uuid.uuid4().hex
+    return session["sid"]
 
 
 @main_bp.route("/")
@@ -36,13 +46,45 @@ def index() -> str:
 
 @main_bp.route("/chat")
 def chat_page() -> str:
-    """Menampilkan halaman chatbot (disediakan pada Milestone M1)."""
+    """Menampilkan halaman interaktif chatbot PM-Bot."""
+    _get_session_id()
+    intents_data = load_intents()
     return render_template(
-        "placeholder.html",
-        title="Chatbot PM-Bot",
-        description="Fitur chatbot interaktif berbasis rule-based dan integrasi sentimen repositori pantau.",
-        milestone="Milestone M1",
+        "chat.html",
+        bot_name=intents_data.get("bot_name", "PM-Bot"),
+        greeting=intents_data.get("greeting", "Halo! Ada yang bisa saya bantu?"),
+        suggestions=intents_data.get("suggestions", []),
     )
+
+
+@main_bp.route("/api/chat", methods=["POST"])
+def api_chat() -> tuple[Response, int]:
+    """Endpoint REST API untuk mengirim pesan ke chatbot."""
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data, dict) or "message" not in data:
+        return jsonify({"error": "Permintaan harus berupa JSON dengan field 'message'."}), 400
+
+    pesan = data.get("message", "")
+    if not isinstance(pesan, str) or not pesan.strip():
+        return jsonify({"error": "Pesan tidak boleh kosong."}), 400
+
+    if len(pesan) > config.MAX_MESSAGE_LEN:
+        return jsonify(
+            {"error": f"Panjang pesan melebihi batas {config.MAX_MESSAGE_LEN} karakter."}
+        ), 400
+
+    sid = _get_session_id()
+    db_target = current_app.config.get("DATABASE_PATH")
+
+    try:
+        hasil = chat_service.process_chat(
+            message=pesan,
+            session_id=sid,
+            db_path=db_target,
+        )
+        return jsonify({"reply": hasil["reply"], "intent": hasil["intent"]}), 200
+    except ValueError as val_err:
+        return jsonify({"error": str(val_err)}), 400
 
 
 @main_bp.route("/estimasi")

@@ -20,9 +20,19 @@ def test_security_headers(client: FlaskClient) -> None:
     assert response.headers.get("X-Frame-Options") == "DENY"
 
 
+def test_chat_page(client: FlaskClient) -> None:
+    """Memastikan halaman chatbot interaktif termuat dengan benar."""
+    response = client.get("/chat")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "PM-Bot" in html
+    assert "chat-container" in html
+    assert "chatMessages" in html
+
+
 def test_placeholder_pages(client: FlaskClient) -> None:
-    """Memastikan seluruh menu navigasi dapat diakses tanpa error 404."""
-    routes = ["/chat", "/estimasi", "/repositori", "/dashboard", "/admin"]
+    """Memastikan seluruh menu navigasi belum selesai tetap dapat diakses tanpa error 404."""
+    routes = ["/estimasi", "/repositori", "/dashboard", "/admin"]
     for route in routes:
         response = client.get(route)
         assert response.status_code == 200
