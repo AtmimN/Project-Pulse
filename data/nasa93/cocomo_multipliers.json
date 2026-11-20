@@ -1,0 +1,23 @@
+{
+  "acap": {
+    "sangat_rendah": 1.46,
+    "rendah": 1.19,
+    "nominal": 1.00,
+    "tinggi": 0.86,
+    "sangat_tinggi": 0.71
+  },
+  "pcap": {
+    "sangat_rendah": 1.42,
+    "rendah": 1.17,
+    "nominal": 1.00,
+    "tinggi": 0.86,
+    "sangat_tinggi": 0.70
+  },
+  "aexp": {
+    "sangat_rendah": 1.29,
+    "rendah": 1.13,
+    "nominal": 1.00,
+    "tinggi": 0.91,
+    "sangat_tinggi": 0.82
+  }
+}

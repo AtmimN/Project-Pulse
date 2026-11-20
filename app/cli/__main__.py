@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import sys
 from app.db.connection import init_db
+from app.services.training_service import build_training_data, train_models_service
+from app.services.snapshot_service import snapshot_all_monitor_repos
 
 
 def cmd_init_db(args: argparse.Namespace) -> None:
@@ -11,6 +13,41 @@ def cmd_init_db(args: argparse.Namespace) -> None:
     print("Menginisialisasi basis data ProjectPulse...")
     init_db()
     print("Basis data berhasil diinisialisasi dalam mode WAL.")
+
+
+def cmd_build_training_data(args: argparse.Namespace) -> None:
+    """Membangun dataset latih Model A dari training_repos.json."""
+    print("Membangun data latih Model A...")
+    refresh = bool(getattr(args, "refresh", False))
+    delete_clones = bool(getattr(args, "delete_clones", False))
+    res = build_training_data(refresh=refresh, delete_clones=delete_clones)
+    if res.get("status") == "error":
+        print(f"Error: {res.get('message')}")
+        return
+    print(f"Selesai: {res['n_included']} repositori disertakan, {res['n_excluded']} dikeluarkan.")
+    if res.get("warning_insufficient"):
+        print("Peringatan: Jumlah data latih kurang dari batas MIN_TRAINING_ROWS.")
+
+
+def cmd_train_models(args: argparse.Namespace) -> None:
+    """Melatih Model A (data GitHub) dan Model B (NASA93)."""
+    print("Melatih model regresi...")
+    summary = train_models_service()
+    if summary.get("model_a"):
+        m_a = summary["model_a"]
+        print(f"Model A berhasil dilatih ({m_a['variant']}): Test R2 = {m_a['test_r2']}, MAE = {m_a['test_mae']} bulan.")
+    if summary.get("model_b"):
+        m_b = summary["model_b"]
+        print(f"Model B berhasil dilatih: Test R2 orig = {m_b['test_r2_orig']}, MAE = {m_b['test_mae_person_months']} person-bulan.")
+    for msg in summary.get("messages", []):
+        print(f"Catatan: {msg}")
+
+
+def cmd_snapshot_repos(args: argparse.Namespace) -> None:
+    """Memperbarui metrik snapshot repositori pantau."""
+    print("Memperbarui snapshot repositori pantau...")
+    results = snapshot_all_monitor_repos()
+    print(f"Selesai memproses {len(results)} repositori pantau.")
 
 
 def cmd_stub(command_name: str, milestone: str) -> None:
@@ -70,11 +107,11 @@ def dispatch_command(args: argparse.Namespace) -> None:
     if sub == "init-db":
         cmd_init_db(args)
     elif sub == "build-training-data":
-        cmd_stub(sub, "Milestone M2")
+        cmd_build_training_data(args)
     elif sub == "train-models":
-        cmd_stub(sub, "Milestone M2")
+        cmd_train_models(args)
     elif sub == "snapshot-repos":
-        cmd_stub(sub, "Milestone M2")
+        cmd_snapshot_repos(args)
     elif sub in ("export-label-sample", "validate-sentiment", "rescore"):
         cmd_stub(sub, "Milestone M3")
     elif sub == "backtest-alerts":

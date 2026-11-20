@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Estimasi Durasi Proyek — ProjectPulse{% endblock %}
+
+{% block content %}
+<section class="hero-section" style="padding: 2rem;">
+    <h1 class="hero-title" style="font-size: 1.75rem;">Kalkulator Estimasi Proyek Berdampingan</h1>
+    <p class="hero-subtitle" style="font-size: 0.95rem; margin-bottom: 0;">
+        Membandingkan estimasi dari dua sudut pandang independen: 
+        <strong>Model A</strong> (durasi kalender dari data historis open source GitHub) dan 
+        <strong>Model B</strong> (usaha person-bulan dari benchmark industri NASA93 COCOMO).
+    </p>
+</section>
+
+<!-- Prefill & Backtest Bar -->
+<div class="card" style="margin-bottom: 1.5rem; padding: 1.25rem;">
+    <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Isi Otomatis / Uji Mundur dari Repositori Pantau</h3>
+    <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+        <select id="prefillRepoSelect" class="chat-input" style="max-width: 320px;">
+            <option value="">-- Pilih Repositori Pantau --</option>
+            {% for r in monitor_repos %}
+            <option value="{{ r.full_name }}">{{ r.full_name }}</option>
+            {% endfor %}
+        </select>
+        <button type="button" id="btnPrefillNow" class="btn btn-outline">Isi Keadaan Sekarang (now)</button>
+        <button type="button" id="btnPrefillStable" class="btn btn-outline">Uji Mundur Rilis Pertama (first_stable)</button>
+    </div>
+    <div id="prefillFeedback" style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
+</div>
+
+<div class="grid-cards" style="grid-template-columns: 1fr 1.6fr; gap: 1.5rem; align-items: start;">
+    <!-- Form Input Parameter -->
+    <div class="card">
+        <h2 class="card-title">Parameter Proyek</h2>
+        <form id="estimateForm" style="display: flex; flex-direction: column; gap: 1rem;">
+            <div>
+                <label for="n_members" class="status-label">Jumlah Anggota Tim (1 - 300)</label>
+                <input type="number" id="n_members" name="n_members" class="chat-input" value="5" min="1" max="300" required>
+            </div>
+            <div>
+                <label for="n_tasks" class="status-label">Jumlah Tugas / Issue Terencana (1 - 100.000)</label>
+                <input type="number" id="n_tasks" name="n_tasks" class="chat-input" value="30" min="1" max="100000" required>
+            </div>
+            <div>
+                <label for="kloc" class="status-label">Perkiraan Ukuran Kode (KLOC, 0.1 - 5000)</label>
+                <input type="number" id="kloc" name="kloc" step="0.1" class="chat-input" value="10.0" min="0.1" max="5000" required>
+                <small style="color: var(--text-muted); font-size: 0.75rem;">1 KLOC = 1.000 baris kode sumber tidak kosong.</small>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); padding-top: 0.75rem;">
+                <span class="status-label">Level Kapabilitas Tim (COCOMO)</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.5rem;">
+                    <div>
+                        <label for="acap" style="font-size: 0.8rem;">ACAP (Analis):</label>
+                        <select id="acap" name="acap" class="chat-input">
+                            <option value="sangat_rendah">Sangat Rendah</option>
+                            <option value="rendah">Rendah</option>
+                            <option value="nominal" selected>Nominal</option>
+                            <option value="tinggi">Tinggi</option>
+                            <option value="sangat_tinggi">Sangat Tinggi</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="pcap" style="font-size: 0.8rem;">PCAP (Programmer):</label>
+                        <select id="pcap" name="pcap" class="chat-input">
+                            <option value="sangat_rendah">Sangat Rendah</option>
+                            <option value="rendah">Rendah</option>
+                            <option value="nominal" selected>Nominal</option>
+                            <option value="tinggi">Tinggi</option>
+                            <option value="sangat_tinggi">Sangat Tinggi</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top: 0.5rem;">
+                    <label for="aexp" style="font-size: 0.8rem;">AEXP (Pengalaman Aplikasi):</label>
+                    <select id="aexp" name="aexp" class="chat-input">
+                        <option value="sangat_rendah">Sangat Rendah</option>
+                        <option value="rendah">Rendah</option>
+                        <option value="nominal" selected>Nominal</option>
+                        <option value="tinggi">Tinggi</option>
+                        <option value="sangat_tinggi">Sangat Tinggi</option>
+                    </select>
+                </div>
+            </div>
+
+            <button type="submit" id="btnSubmitEstimate" class="btn btn-primary" style="margin-top: 0.5rem;">
+                Hitung Estimasi &rarr;
+            </button>
+        </form>
+    </div>
+
+    <!-- Container Hasil Berdampingan -->
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <!-- Kartu Model A -->
+            <div class="card" id="cardModelA">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h3 class="card-title" style="margin-bottom: 0;">Model A: Data GitHub</h3>
+                    <span class="badge">Durasi Kalender</span>
+                </div>
+                <div id="contentModelA">
+                    <p class="card-text" style="color: var(--text-muted);">
+                        Klik "Hitung Estimasi" untuk menampilkan hasil prediksi durasi dari data repositori GitHub.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Kartu Model B -->
+            <div class="card" id="cardModelB">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h3 class="card-title" style="margin-bottom: 0;">Model B: NASA93</h3>
+                    <span class="badge">Usaha (Person-Bulan)</span>
+                </div>
+                <div id="contentModelB">
+                    <p class="card-text" style="color: var(--text-muted);">
+                        Klik "Hitung Estimasi" untuk menampilkan hasil prediksi usaha dan durasi indikatif NASA93.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kartu Beban Kerja & Perbandingan Selisih -->
+        <div id="comparisonContainer" style="display: none; flex-direction: column; gap: 1rem;">
+            <div class="card" id="cardWorkload">
+                <h4 style="font-size: 0.95rem; margin-bottom: 0.25rem;">Analisis Beban Kerja Tim</h4>
+                <p id="workloadText" style="font-size: 0.9rem; margin-bottom: 0;"></p>
+            </div>
+            <div class="card" id="cardComparison">
+                <h4 style="font-size: 0.95rem; margin-bottom: 0.25rem;">Perbandingan Antar-Model</h4>
+                <p id="comparisonText" style="font-size: 0.9rem; margin-bottom: 0;"></p>
+            </div>
+        </div>
+
+        <!-- Kotak Satuan dan Asumsi -->
+        <div class="card" style="background-color: #f8fafc; border-style: dashed;">
+            <h4 style="font-size: 0.9rem; margin-bottom: 0.5rem;">Satuan, Asumsi, dan Keterbatasan</h4>
+            <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 1.25rem; line-height: 1.5;">
+                <li><strong>Model A:</strong> Memprediksi durasi kalender (bulan). Durasi commit pertama hingga rilis stabil pertama bukan jam kerja efektif.</li>
+                <li><strong>Model B:</strong> Memprediksi usaha (person-bulan; 1 bulan = 152 jam). Durasi indikatif dihitung sederhana: <code>usaha &divide; anggota</code>, tanpa memodelkan overhead komunikasi (Brooks' Law).</li>
+                <li><strong>Level Kapabilitas:</strong> Pengali COCOMO 1981 diterapkan sebagai <em>skenario bagaimana-jika</em>, bukan hasil regresi langsung dari data GitHub.</li>
+                <li><strong>Input tidak mencakup:</strong> Bidang keahlian spesifik (frontend/backend) dan metodologi karena tidak tersedia pada repositori publik GitHub maupun NASA93.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById("estimateForm");
+    const prefillSelect = document.getElementById("prefillRepoSelect");
+    const btnPrefillNow = document.getElementById("btnPrefillNow");
+    const btnPrefillStable = document.getElementById("btnPrefillStable");
+    const prefillFeedback = document.getElementById("prefillFeedback");
+
+    const contentModelA = document.getElementById("contentModelA");
+    const contentModelB = document.getElementById("contentModelB");
+    const comparisonContainer = document.getElementById("comparisonContainer");
+    const workloadText = document.getElementById("workloadText");
+    const comparisonText = document.getElementById("comparisonText");
+
+    async function handlePrefill(asOf) {
+        const repo = prefillSelect.value;
+        if (!repo) {
+            alert("Pilih salah satu repositori pantau terlebih dahulu.");
+            return;
+        }
+        prefillFeedback.textContent = "Mengambil data snapshot " + asOf + "...";
+        try {
+            const res = await fetch("/api/estimate/prefill?repo=" + encodeURIComponent(repo) + "&as_of=" + asOf);
+            const data = await res.json();
+            if (!res.ok) {
+                prefillFeedback.textContent = "Gagal: " + (data.error || "Snapshot belum ada.");
+                return;
+            }
+            if (data.n_members) document.getElementById("n_members").value = data.n_members;
+            if (data.n_tasks) document.getElementById("n_tasks").value = data.n_tasks;
+            if (data.kloc) document.getElementById("kloc").value = data.kloc;
+
+            let msg = "Berhasil mengisi metrik dari " + data.repo + " (" + asOf + "). Level tim tetap diisi manual.";
+            if (data.duration_actual) {
+                msg += " Durasi aktual: " + data.duration_actual + " bulan.";
+            }
+            prefillFeedback.textContent = msg;
+        } catch (err) {
+            prefillFeedback.textContent = "Terjadi kesalahan saat menghubungi server.";
+        }
+    }
+
+    btnPrefillNow.addEventListener("click", () => handlePrefill("now"));
+    btnPrefillStable.addEventListener("click", () => handlePrefill("first_stable"));
+
+    form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        const payload = {
+            n_members: parseInt(document.getElementById("n_members").value, 10),
+            n_tasks: parseInt(document.getElementById("n_tasks").value, 10),
+            kloc: parseFloat(document.getElementById("kloc").value),
+            acap: document.getElementById("acap").value,
+            pcap: document.getElementById("pcap").value,
+            aexp: document.getElementById("aexp").value
+        };
+
+        try {
+            const res = await fetch("/api/estimate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                alert("Error: " + (data.error || "Validasi gagal."));
+                return;
+            }
+            renderResults(data);
+        } catch (err) {
+            alert("Gagal terhubung ke endpoint estimasi.");
+        }
+    });
+
+    function renderResults(data) {
+        // Model A
+        const mA = data.model_a;
+        if (mA.status === "ready") {
+            let warnHtml = mA.warnings.length ? `<div style="color: #d97706; font-size: 0.75rem; margin-top: 0.5rem;">${mA.warnings.join('<br>')}</div>` : "";
+            contentModelA.innerHTML = `
+                <div style="font-size: 1.75rem; font-weight: 700; color: var(--primary-color);">
+                    ${mA.adjusted_duration} <span style="font-size: 1rem; font-weight: 500; color: var(--text-color);">bulan</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    Rentang: ${mA.range[0]} &ndash; ${mA.range[1]} bulan (&plusmn; ${mA.mae} MAE)
+                </div>
+                <div style="font-size: 0.8rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem;">
+                    <div>Estimasi Dasar: <strong>${mA.base_duration} bulan</strong></div>
+                    <div>Faktor Level Tim: <strong>&times;${mA.adjustment_factor}</strong> (skenario COCOMO)</div>
+                </div>
+                ${warnHtml}
+            `;
+        } else {
+            contentModelA.innerHTML = `<p style="color: #dc2626; font-size: 0.85rem;">${mA.message}</p>`;
+        }
+
+        // Model B
+        const mB = data.model_b;
+        if (mB.status === "ready") {
+            let warnHtml = mB.warnings.length ? `<div style="color: #d97706; font-size: 0.75rem; margin-top: 0.5rem;">${mB.warnings.join('<br>')}</div>` : "";
+            contentModelB.innerHTML = `
+                <div style="font-size: 1.75rem; font-weight: 700; color: #0f766e;">
+                    ${mB.effort_person_months} <span style="font-size: 1rem; font-weight: 500; color: var(--text-color);">person-bulan</span>
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    Perkiraan Durasi: <strong>${mB.indicative_duration} bulan</strong> (usaha &divide; ${data.input_summary.n_members})
+                </div>
+                <div style="font-size: 0.8rem; border-top: 1px solid var(--border-color); padding-top: 0.5rem;">
+                    <div>Akurasi Uji: &plusmn;${mB.mae_effort} person-bulan MAE</div>
+                    <div>Durasi Indikatif: ${mB.range[0]} &ndash; ${mB.range[1]} bulan</div>
+                </div>
+                ${warnHtml}
+            `;
+        } else {
+            contentModelB.innerHTML = `<p style="color: #dc2626; font-size: 0.85rem;">${mB.message}</p>`;
+        }
+
+        // Workload & Comparison
+        comparisonContainer.style.display = "flex";
+        if (data.workload) {
+            workloadText.textContent = data.workload.message + ` (${data.workload.tasks_per_member} tugas/anggota, persentil ${data.workload.percentile}%).`;
+        }
+        if (data.comparison) {
+            comparisonText.textContent = data.comparison.message;
+            const cardComp = document.getElementById("cardComparison");
+            if (data.comparison.is_flagged) {
+                cardComp.style.borderColor = "#f59e0b";
+                cardComp.style.backgroundColor = "#fffbeb";
+            } else {
+                cardComp.style.borderColor = "var(--border-color)";
+                cardComp.style.backgroundColor = "var(--card-bg)";
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

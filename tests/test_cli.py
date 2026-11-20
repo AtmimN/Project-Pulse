@@ -12,13 +12,20 @@ def test_cli_dispatch_init_db(capsys) -> None:
     assert "mode WAL" in captured.out
 
 
+def test_cli_dispatch_m2_commands(capsys) -> None:
+    """Menguji pemanggilan perintah M2 (train-models) via CLI."""
+    args = argparse.Namespace(subcommand="train-models")
+    dispatch_command(args)
+    captured = capsys.readouterr()
+    assert "Melatih model regresi" in captured.out
+
+
 def test_cli_dispatch_stub_commands(capsys) -> None:
     """Memastikan perintah batch berikutnya menampilkan informasi milestone terkait."""
     commands = [
-        ("build-training-data", "Milestone M2"),
-        ("train-models", "Milestone M2"),
-        ("snapshot-repos", "Milestone M2"),
+        ("export-label-sample", "Milestone M3"),
         ("validate-sentiment", "Milestone M3"),
+        ("rescore", "Milestone M3"),
         ("backtest-alerts", "Milestone M4"),
     ]
     for cmd, milestone in commands:

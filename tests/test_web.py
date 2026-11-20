@@ -30,9 +30,18 @@ def test_chat_page(client: FlaskClient) -> None:
     assert "chatMessages" in html
 
 
+def test_estimate_page(client: FlaskClient) -> None:
+    """Memastikan halaman estimasi proyek termuat dengan benar."""
+    response = client.get("/estimasi")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Kalkulator Estimasi Proyek Berdampingan" in html
+    assert "estimateForm" in html
+
+
 def test_placeholder_pages(client: FlaskClient) -> None:
     """Memastikan seluruh menu navigasi belum selesai tetap dapat diakses tanpa error 404."""
-    routes = ["/estimasi", "/repositori", "/dashboard", "/admin"]
+    routes = ["/repositori", "/dashboard", "/admin"]
     for route in routes:
         response = client.get(route)
         assert response.status_code == 200

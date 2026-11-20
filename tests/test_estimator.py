@@ -1,0 +1,144 @@
+"""Pengujian modul estimasi proyek: Model A, Model B, NASA93, dan penyesuaian level."""
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import pytest
+
+from app.estimator.adjustments import average_member_levels, calculate_adjustment_factor
+from app.estimator.comparison import compare_models
+from app.estimator.model_a import predict_model_a, train_model_a
+from app.estimator.model_b import predict_model_b, train_model_b
+from app.estimator.nasa93 import (
+    interpolate_multiplier,
+    load_cocomo_multipliers,
+    load_nasa93_dataset,
+)
+from app.estimator.workload import analyze_workload
+
+
+def test_nasa93_dataset_loader() -> None:
+    """Memastikan dataset NASA93 terbaca dengan benar dan kolom ordinal terpetakan."""
+    df = load_nasa93_dataset()
+    assert len(df) == 93
+    assert "equivphyskloc" in df.columns
+    assert "act_effort" in df.columns
+    assert "acap_ord" in df.columns
+    assert "pcap_ord" in df.columns
+    assert "aexp_ord" in df.columns
+
+    # Verifikasi sebaran usaha median 252 dan maks 8211
+    assert float(df["act_effort"].median()) == 252.0
+    assert float(df["act_effort"].max()) == 8211.0
+
+
+def test_cocomo_multipliers_and_interpolation() -> None:
+    """Menguji pembacaan pengali COCOMO dan interpolasi linear nilai desimal."""
+    mults = load_cocomo_multipliers()
+    assert mults["acap"]["nominal"] == 1.00
+    assert mults["pcap"]["nominal"] == 1.00
+    assert mults["aexp"]["nominal"] == 1.00
+
+    # Uji exact match
+    m_nom = interpolate_multiplier("acap", "nominal", mults)
+    assert m_nom == 1.00
+
+    # Uji interpolasi level 2.5 (tengah antara level 2 rendah 1.19 dan level 3 nominal 1.00)
+    m_interp = interpolate_multiplier("acap", 2.5, mults)
+    assert m_interp == 1.095
+
+    # Uji perhitungan faktor penyesuaian
+    factor_res = calculate_adjustment_factor("nominal", "nominal", "nominal", mults)
+    assert factor_res["factor"] == 1.0
+
+    # Uji rata-rata kapabilitas anggota tim
+    members = [
+        {"acap": "sangat_rendah", "pcap": "rendah", "aexp": "nominal"},  # 1, 2, 3
+        {"acap": "nominal", "pcap": "nominal", "aexp": "nominal"},        # 3, 3, 3
+    ]
+    avg = average_member_levels(members)
+    assert avg["n_members"] == 2
+    assert avg["avg_acap_ord"] == 2.0  # (1 + 3) / 2
+    assert avg["avg_pcap_ord"] == 2.5  # (2 + 3) / 2
+    assert avg["avg_aexp_ord"] == 3.0  # (3 + 3) / 2
+
+
+def test_model_a_training_and_prediction(tmp_path: Path) -> None:
+    """Menguji siklus pelatihan dan inferensi Model A pada data tiruan."""
+    np.random.seed(42)
+    n = 35
+    contribs = np.random.randint(2, 50, size=n)
+    tasks = np.random.randint(10, 500, size=n)
+    kloc = np.random.uniform(1.0, 50.0, size=n)
+    # Target sintetik
+    duration = 0.2 * contribs + 0.05 * tasks + 0.3 * kloc + np.random.normal(0, 1, size=n)
+    duration = np.maximum(1.0, duration)
+
+    df_synth = pd.DataFrame({
+        "n_contributors": contribs,
+        "n_work_items": tasks,
+        "kloc": kloc,
+        "duration_months": duration,
+    })
+
+    bundle, metrics = train_model_a(df_synth)
+    assert metrics["variant"] in ("raw", "log1p")
+    assert metrics["test_mae"] > 0
+    assert len(metrics["coefficients"]) == 3
+
+    # Prediksi dalam rentang
+    pred, mae, warns = predict_model_a(bundle, n_contributors=10, n_work_items=50, kloc=10.0)
+    assert pred > 0
+    assert len(warns) == 0
+
+    # Prediksi di luar rentang
+    _, _, warns_out = predict_model_a(bundle, n_contributors=200, n_work_items=50, kloc=10.0)
+    assert len(warns_out) > 0
+
+
+def test_model_b_training_and_prediction() -> None:
+    """Menguji siklus pelatihan dan inferensi Model B dari NASA93."""
+    df_nasa = load_nasa93_dataset()
+    bundle, metrics = train_model_b(df_nasa)
+
+    assert metrics["test_mae_person_months"] > 0
+    assert metrics["test_r2_orig"] != 0
+
+    # Prediksi untuk tim 5 orang
+    effort, dur, mae, warns = predict_model_b(
+        bundle=bundle,
+        kloc=20.0,
+        acap_ord=3.0,
+        pcap_ord=3.0,
+        aexp_ord=3.0,
+        n_members=5,
+    )
+    assert effort > 0
+    assert dur == round(effort / 5, 2)
+    assert len(warns) == 0
+
+    # Uji peringatan saat level kapabilitas programmer rendah
+    _, _, _, warns_low = predict_model_b(
+        bundle=bundle,
+        kloc=20.0,
+        acap_ord=1.0,
+        pcap_ord=2.0,
+        aexp_ord=3.0,
+        n_members=5,
+    )
+    assert len(warns_low) > 0
+    assert "level nominal hingga sangat tinggi" in warns_low[0]
+
+
+def test_workload_and_comparison() -> None:
+    """Menguji analisis beban kerja dan penanda rasio selisih antar model."""
+    dist = [10.0, 20.0, 30.0, 40.0, 50.0]
+    res_w = analyze_workload(n_members=2, n_tasks=120, training_workload_dist=dist)
+    assert res_w["tasks_per_member"] == 60.0
+    assert res_w["kategori"] == "sangat tinggi"
+
+    # Penanda selisih antar-model
+    res_comp_ok = compare_models(duration_a=10.0, duration_b=15.0)  # rasio 1.5x <= 2.0x
+    assert res_comp_ok["is_flagged"] is False
+
+    res_comp_flag = compare_models(duration_a=5.0, duration_b=15.0)  # rasio 3.0x > 2.0x
+    assert res_comp_flag["is_flagged"] is True

@@ -7,7 +7,8 @@ from flask import Blueprint, current_app, jsonify, render_template, request, ses
 from app import config
 from app.chatbot.engine import load_intents
 from app.db.connection import get_connection
-from app.services import chat_service
+from app.db import repos_repo
+from app.services import chat_service, estimate_service
 
 main_bp = Blueprint("main", __name__)
 
@@ -89,13 +90,49 @@ def api_chat() -> tuple[Response, int]:
 
 @main_bp.route("/estimasi")
 def estimate_page() -> str:
-    """Menampilkan halaman estimasi regresi (disediakan pada Milestone M2)."""
+    """Menampilkan halaman kalkulator estimasi dua model berdampingan."""
+    db_target = current_app.config.get("DATABASE_PATH")
+    try:
+        with get_connection(db_target) as conn:
+            monitor_repos = repos_repo.list_repos(conn, kind="monitor", active_only=True)
+    except Exception:
+        monitor_repos = []
+
     return render_template(
-        "placeholder.html",
-        title="Estimasi Durasi Proyek",
-        description="Dua model regresi linear berdampingan (Data Repositori GitHub & NASA93).",
-        milestone="Milestone M2",
+        "estimate.html",
+        monitor_repos=monitor_repos,
     )
+
+
+@main_bp.route("/api/estimate/prefill")
+def api_estimate_prefill() -> tuple[Response, int]:
+    """Endpoint untuk mengambil nilai awal metrik dari snapshot repositori pantau."""
+    repo = request.args.get("repo", "").strip()
+    as_of = request.args.get("as_of", "now").strip()
+    if not repo:
+        return jsonify({"error": "Parameter query 'repo' wajib disertakan."}), 400
+
+    db_target = current_app.config.get("DATABASE_PATH")
+    try:
+        prefill_data = estimate_service.get_prefill_data(repo, as_of=as_of, db_path=db_target)
+        return jsonify(prefill_data), 200
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 400
+
+
+@main_bp.route("/api/estimate", methods=["POST"])
+def api_estimate() -> tuple[Response, int]:
+    """Endpoint REST API untuk menghitung estimasi Model A dan Model B."""
+    payload = request.get_json(silent=True)
+    if not payload or not isinstance(payload, dict):
+        return jsonify({"error": "Permintaan harus berupa JSON valid."}), 400
+
+    db_target = current_app.config.get("DATABASE_PATH")
+    try:
+        hasil = estimate_service.calculate_estimation(payload, db_path=db_target)
+        return jsonify(hasil), 200
+    except ValueError as val_err:
+        return jsonify({"error": str(val_err)}), 400
 
 
 @main_bp.route("/repositori")
