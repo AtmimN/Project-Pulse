@@ -12,6 +12,7 @@ from app.services.sentiment_service import (
     rescore_comments_service,
     validate_sentiment_service,
 )
+from app.services.alert_service import backtest_alerts
 
 
 def cmd_init_db(args: argparse.Namespace) -> None:
@@ -94,6 +95,18 @@ def cmd_rescore(args: argparse.Namespace) -> None:
     print(f"Selesai: {res['comments_rescored']} komentar berhasil dihitung ulang (Metode: {res['method']}).")
 
 
+def cmd_backtest_alerts(args: argparse.Namespace) -> None:
+    """Menjalankan uji ulang (backtest) aturan alert pada data historis."""
+    days = getattr(args, "days", 60)
+    repo = getattr(args, "repo", None)
+    print(f"Menjalankan backtest alert untuk {days} hari ke belakang...")
+    res = backtest_alerts(days=days, repo_name=repo)
+    print(f"Hasil Backtest: Total {res['total_alerts']} alert terdeteksi.")
+    for atype, counts in res.get("counts", {}).items():
+        print(f" - {atype}: lemah={counts.get('lemah', 0)}, sedang={counts.get('sedang', 0)}, kuat={counts.get('kuat', 0)}")
+    print(f"Hasil tersimpan di {res['csv_path']}")
+
+
 def cmd_stub(command_name: str, milestone: str) -> None:
     """Menampilkan informasi bahwa perintah akan diimplementasikan pada milestone terkait."""
     print(f"Perintah '{command_name}' akan diimplementasikan pada {milestone}.")
@@ -147,11 +160,10 @@ def dispatch_command(args: argparse.Namespace) -> None:
         "export-label-sample": cmd_export_label_sample,
         "validate-sentiment": cmd_validate_sentiment,
         "rescore": cmd_rescore,
+        "backtest-alerts": cmd_backtest_alerts,
     }
     if sub in handlers:
         handlers[sub](args)
-    elif sub == "backtest-alerts":
-        cmd_stub(sub, "Milestone M4")
     else:
         print(f"Perintah tidak dikenal: {sub}")
         sys.exit(1)

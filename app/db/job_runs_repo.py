@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 
@@ -58,4 +58,42 @@ def get_latest_run(conn: sqlite3.Connection, job_name: str | None = None) -> dic
     else:
         sql = "SELECT * FROM job_runs ORDER BY id DESC LIMIT 1"
         row = conn.execute(sql).fetchone()
+    return dict(row) if row else None
+
+
+def clean_stale_runs(conn: sqlite3.Connection, max_minutes: int = 30) -> int:
+    """Menandai baris 'berjalan' yang lebih lama dari 30 menit sebagai gagal/macet."""
+    threshold = (datetime.now() - timedelta(minutes=max_minutes)).isoformat()
+    sql = (
+        "UPDATE job_runs SET status = 'gagal', finished_at = ?, "
+        "detail = '{\"error\": \"eksekusi macet melebihi batas waktu\"}' "
+        "WHERE status = 'berjalan' AND started_at < ?"
+    )
+    cursor = conn.execute(sql, (datetime.now().isoformat(), threshold))
+    return cursor.rowcount
+
+
+def get_active_fresh_run(
+    conn: sqlite3.Connection,
+    job_name: str | None = None,
+    max_minutes: int = 30,
+) -> dict[str, Any] | None:
+    """Mengambil eksekusi 'berjalan' yang masih segar (< 30 menit)."""
+    clean_stale_runs(conn, max_minutes=max_minutes)
+    if job_name:
+        sql = "SELECT * FROM job_runs WHERE job_name = ? AND status = 'berjalan' LIMIT 1"
+        row = conn.execute(sql, (job_name,)).fetchone()
+    else:
+        sql = "SELECT * FROM job_runs WHERE status = 'berjalan' LIMIT 1"
+        row = conn.execute(sql).fetchone()
+    return dict(row) if row else None
+
+
+def get_last_successful_run(
+    conn: sqlite3.Connection,
+    job_name: str = "scrape_cycle",
+) -> dict[str, Any] | None:
+    """Mengambil rekaman eksekusi berhasil terakhir untuk tugas tertentu."""
+    sql = "SELECT * FROM job_runs WHERE job_name = ? AND status = 'berhasil' ORDER BY id DESC LIMIT 1"
+    row = conn.execute(sql, (job_name,)).fetchone()
     return dict(row) if row else None

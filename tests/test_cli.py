@@ -41,13 +41,10 @@ def test_cli_dispatch_m3_commands(capsys) -> None:
     assert "Menghitung ulang sentimen" in captured.out
 
 
-def test_cli_dispatch_stub_commands(capsys) -> None:
-    """Memastikan perintah batch berikutnya menampilkan informasi milestone terkait."""
-    commands = [
-        ("backtest-alerts", "Milestone M4"),
-    ]
-    for cmd, milestone in commands:
-        args = argparse.Namespace(subcommand=cmd)
-        dispatch_command(args)
-        captured = capsys.readouterr()
-        assert milestone in captured.out
+def test_cli_dispatch_m4_commands(capsys) -> None:
+    """Menguji pemanggilan perintah M4 (backtest-alerts) via CLI."""
+    args_bt = argparse.Namespace(subcommand="backtest-alerts", days=7, repo=None)
+    dispatch_command(args_bt)
+    captured = capsys.readouterr()
+    assert "Menjalankan backtest alert" in captured.out
+    assert "Hasil Backtest" in captured.out
