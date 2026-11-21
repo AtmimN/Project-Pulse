@@ -1,30 +1,40 @@
 comment_id,text,label
-73,@dependabot rebase,
-67,"Thanks for the report
+102,"Removing --prod was left over from my troubleshooting (I tried that first based on the earlier suggestion here, and it didn't help). The actual fix is only the HOME line. I've since tested ExecStart=/usr/bin/node app.js --prod together with Environment=HOME=/root and it starts fine too. With Environment=NODE_ENV=production set, --prod is redundant anyway, since both put Sails in production mode, so either form works.",
+119,"@joonass-visma I had the same issue, this is fixed in source by #436, but the published 2.6.1 bundles were built before that merge (headless/index.mjs is byte-identical to 2.6.0's), so it will be resolved once a rebuilt release ships 🙌 ",
+93,"Fixed in 2.3.1 (e376d8b6). In our reproduction on 2.3.0 the crash came when opening the description editor, not on the card click itself. If a plain card click still fails for you on 2.3.1, please reopen with the console error.",
+36,"This is the most useful translation PR we have had in a while, and I want to be straight with you about what happened to it.
 
-fixed with the next version ",
-32,"Thanks for this, and sorry it sat for so long.
+We merged a bulk pass on September 8th that filled the missing keys in every locale, so the new strings in your PR now collide with ours. That part is redundant through no fault of yours, your PR was open first.
 
-We are not taking it, but the reason is not the implementation. We already have a colour accessibility setting on the Pro side that is likely to come across to Community, and a separate due date colour scheme next to it would leave us with two settings doing overlapping work.
+The other 44 changes are not redundant at all, and we have taken them. You caught things nobody had looked at in years: `Ta bort from tavla` with the English word still in it, `serverConnectionFailed` left completely untranslated, ""bräden"" for boards when the rest of the file says ""tavlor"", ""E-mail"" instead of ""E-postadress"", and the date format block still carrying the English ""at"". Those are real bugs, and the format block in particular is something our own tooling cannot detect.
 
-If the motivation here was readability for colour vision deficiency rather than preference, say so and we will make sure that need is covered when that setting lands.
+Your corrections to the existing strings are in, along with the login and markdown editor ones, and we kept our versions of the new keys so the file ends up consistent. It is on master now.
+
+If you want to go through the new strings we landed and fix anything that reads badly in Swedish, please do. You clearly know this file better than we do.
 ",
-118,@timolins thanks for the fix!,
-39,"We are not taking this one.
+75,"I reproduced this on 2.1.1 and found the root cause. The cause is the Express version, not the Planka code. Planka v2.2.0 and later already fix it.
 
-The endpoint returns every card where the current user is a member or the
-author, and checks nothing else. Everywhere else in the API a card is reached
-through its board and the controller confirms the board membership first. This
-one does not, so somebody who created a card on a board they were later
-removed from still gets that card back, with its labels, tasks, attachments
-and custom field values.
+**Root cause**
 
-There is also no limit and no paging, so the response grows with the instance,
-and `included` carries memberships whose users are not in it, which a client
-cannot resolve.
+1. Planka 2.1.1 locks `express@4.22.0`. This version parses query strings with `qs.parse(str, { plainObjects: true })`. The nested `before[...]` object then has a `null` prototype.
+2. Sails validates the `type: 'json'` input with `rttc`. `rttc/lib/helpers/types.js:463` reads `v.constructor.name`. The object has no `constructor`, so the call throws `TypeError: Cannot read properties of undefined (reading 'name')`. The server answers 500, also for invalid cursors.
+3. `express@4.22.1` and later use `qs.parse(str, { allowPrototypes: true, arrayLimit: 1000 })` again. Planka v2.2.0, v2.2.1 and `master` lock `express@4.22.2`.
 
-The want behind it is reasonable. Scoped through board membership the way
-`cards/show` does it, paged, and returning what the response references, it is
-something we would look at.
+**Test**
 
-Closing this. Thanks for the work.",
+I used an integration test on the test datastore: an archive list with 3 cards, then a request with `before[listChangedAt]` + `before[id]`, then a request with an invalid cursor.
+
+| Code | Valid cursor | Invalid cursor |
+| --- | --- | --- |
+| 2.1.1 | 500 | 500 |
+| 2.1.1, only the Express query parser changed to the 4.22.2 code | 200, correct order | 400 |
+| `master` | 200 | 400 |
+
+The `type: 'ref'` change and the SQL changes are therefore not necessary. They work around the Express bug.
+
+**Fix for 2.1.1 users**
+
+Upgrade Planka to v2.2.x, or upgrade `express` to 4.22.1 or later in the image.
+
+I think this issue can be closed.
+",

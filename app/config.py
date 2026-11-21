@@ -49,6 +49,7 @@ DASHBOARD_URL: str = os.environ.get(
 )
 
 # --- Konstanta Aplikasi ---
+MIN_COMMENTS_FOR_SUMMARY: int = 10
 MAX_COMMENTS_PER_REPO: int = 2000
 BACKFILL_DAYS: int = 90
 SNAPSHOT_INTERVAL_DAYS: int = 7
