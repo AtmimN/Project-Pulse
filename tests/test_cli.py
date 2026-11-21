@@ -20,12 +20,30 @@ def test_cli_dispatch_m2_commands(capsys) -> None:
     assert "Melatih model regresi" in captured.out
 
 
+def test_cli_dispatch_m3_commands(capsys) -> None:
+    """Menguji pemanggilan perintah M3 (export-label-sample, validate-sentiment, rescore) via CLI."""
+    # export-label-sample
+    args_export = argparse.Namespace(subcommand="export-label-sample", n=5)
+    dispatch_command(args_export)
+    captured = capsys.readouterr()
+    assert "Mengekspor" in captured.out
+
+    # validate-sentiment
+    args_val = argparse.Namespace(subcommand="validate-sentiment")
+    dispatch_command(args_val)
+    captured = capsys.readouterr()
+    assert "Memvalidasi model sentimen" in captured.out
+
+    # rescore
+    args_resc = argparse.Namespace(subcommand="rescore")
+    dispatch_command(args_resc)
+    captured = capsys.readouterr()
+    assert "Menghitung ulang sentimen" in captured.out
+
+
 def test_cli_dispatch_stub_commands(capsys) -> None:
     """Memastikan perintah batch berikutnya menampilkan informasi milestone terkait."""
     commands = [
-        ("export-label-sample", "Milestone M3"),
-        ("validate-sentiment", "Milestone M3"),
-        ("rescore", "Milestone M3"),
         ("backtest-alerts", "Milestone M4"),
     ]
     for cmd, milestone in commands:

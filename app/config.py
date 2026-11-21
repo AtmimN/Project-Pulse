@@ -57,6 +57,7 @@ MIN_TRAINING_ROWS: int = 30
 MAX_HISTORY_GAP_MONTHS: int = int(os.environ.get("MAX_HISTORY_GAP_MONTHS", "6"))
 CLONE_DIR: str = "instance/clones"
 COMPARISON_FLAG_RATIO: float = 2.0
+CLASSIFIER_F1_THRESHOLD: float = 0.03
 MAX_MESSAGE_LEN: int = 500
 
 TECHNICAL_NEUTRAL_WORDS: tuple[str, ...] = (

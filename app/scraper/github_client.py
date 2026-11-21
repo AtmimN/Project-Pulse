@@ -109,6 +109,27 @@ class GitHubClient:
         """Mengambil daftar rilis publik untuk repositori."""
         return self._request("GET", f"repos/{full_name}/releases").json()
 
+    def list_issues(self, full_name: str, since: str | None = None) -> list[dict[str, Any]]:
+        """Mengambil daftar issue dan PR yang diperbarui sejak waktu tertentu."""
+        params: dict[str, Any] = {"state": "all", "sort": "updated", "direction": "asc"}
+        if since:
+            params["since"] = since
+        return self.paginate(f"repos/{full_name}/issues", params=params)
+
+    def list_issue_comments(self, full_name: str, since: str | None = None) -> list[dict[str, Any]]:
+        """Mengambil komentar issue yang dibuat sejak waktu tertentu."""
+        params: dict[str, Any] = {"sort": "created", "direction": "asc"}
+        if since:
+            params["since"] = since
+        return self.paginate(f"repos/{full_name}/issues/comments", params=params)
+
+    def list_review_comments(self, full_name: str, since: str | None = None) -> list[dict[str, Any]]:
+        """Mengambil komentar review PR yang dibuat sejak waktu tertentu."""
+        params: dict[str, Any] = {"sort": "created", "direction": "asc"}
+        if since:
+            params["since"] = since
+        return self.paginate(f"repos/{full_name}/pulls/comments", params=params)
+
     def search_count(self, query: str) -> int:
         """Mencari jumlah kecocokan issue/PR menggunakan Search API."""
         resp = self._request("GET", "search/issues", params={"q": query, "per_page": 1})

@@ -56,3 +56,25 @@ def set_active(conn: sqlite3.Connection, repo_id: int, active: int) -> None:
     """Mengubah status aktif/nonaktif sebuah repositori."""
     sql = "UPDATE repos SET active = ? WHERE id = ?"
     conn.execute(sql, (active, repo_id))
+
+
+def ensure_monitor_repos_loaded(conn: sqlite3.Connection, json_path: Any = None) -> list[dict[str, Any]]:
+    """Memastikan repositori pantau awal dari monitor_repos.json tercatat di tabel repos."""
+    import json
+    from pathlib import Path
+    from app import config
+
+    target = Path(json_path) if json_path else (config.BASE_DIR / "data" / "monitor_repos.json")
+    if not target.exists():
+        return list_repos(conn, kind="monitor", active_only=True)
+
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        for r in data.get("repos", []):
+            fn = r.get("full_name", "").strip()
+            if fn and not get_by_full_name(conn, fn):
+                add_repo(conn, fn, kind="monitor", active=1)
+    except Exception:
+        pass
+    return list_repos(conn, kind="monitor", active_only=True)

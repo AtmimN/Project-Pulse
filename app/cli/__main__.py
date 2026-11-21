@@ -6,6 +6,12 @@ import sys
 from app.db.connection import init_db
 from app.services.training_service import build_training_data, train_models_service
 from app.services.snapshot_service import snapshot_all_monitor_repos
+from app.services.scrape_service import scrape_all_monitor_repos
+from app.services.sentiment_service import (
+    export_label_sample,
+    rescore_comments_service,
+    validate_sentiment_service,
+)
 
 
 def cmd_init_db(args: argparse.Namespace) -> None:
@@ -50,6 +56,44 @@ def cmd_snapshot_repos(args: argparse.Namespace) -> None:
     print(f"Selesai memproses {len(results)} repositori pantau.")
 
 
+def cmd_scrape_repos(args: argparse.Namespace) -> None:
+    """Menjalankan scraping incremental komentar dan rilis repositori pantau."""
+    print("Menjalankan scraping repositori pantau...")
+    res = scrape_all_monitor_repos()
+    print(f"Selesai (Status: {res['status']}): {res['new_comments']} komentar baru, {res['new_releases']} rilis baru.")
+    for r in res.get("results", []):
+        print(f" - {r['full_name']}: {r['status']} ({r['new_comments']} komentar, {r['new_releases']} rilis)")
+
+
+def cmd_export_label_sample(args: argparse.Namespace) -> None:
+    """Mengekspor sampel komentar untuk pelabelan manual."""
+    n = getattr(args, "n", 200)
+    print(f"Mengekspor {n} sampel komentar...")
+    count = export_label_sample(n=n)
+    print(f"Berhasil mengekspor {count} baris ke data/labels/sample_to_label.csv.")
+
+
+def cmd_validate_sentiment(args: argparse.Namespace) -> None:
+    """Memvalidasi model sentimen terhadap berkas label manual."""
+    print("Memvalidasi model sentimen...")
+    res = validate_sentiment_service()
+    if not res.get("validated"):
+        print(f"Info: {res.get('message')}")
+        return
+    v = res["vader"]
+    print(f"Hasil VADER ({res['n_samples']} sampel): Akurasi = {v['accuracy']}, Macro-F1 = {v['macro_f1']}")
+    if res.get("classifier"):
+        c = res["classifier"]
+        print(f"Hasil Classifier: Akurasi = {c['accuracy']}, Macro-F1 = {c['macro_f1']}")
+
+
+def cmd_rescore(args: argparse.Namespace) -> None:
+    """Menghitung ulang label sentimen pada tabel comments."""
+    print("Menghitung ulang sentimen pada seluruh komentar...")
+    res = rescore_comments_service()
+    print(f"Selesai: {res['comments_rescored']} komentar berhasil dihitung ulang (Metode: {res['method']}).")
+
+
 def cmd_stub(command_name: str, milestone: str) -> None:
     """Menampilkan informasi bahwa perintah akan diimplementasikan pada milestone terkait."""
     print(f"Perintah '{command_name}' akan diimplementasikan pada {milestone}.")
@@ -63,37 +107,27 @@ def main() -> None:
     )
     subparsers = parser.add_subparsers(dest="subcommand", help="Perintah yang tersedia")
 
-    # init-db
     subparsers.add_parser("init-db", help="Inisialisasi tabel basis data mode WAL")
 
-    # build-training-data
     p_btd = subparsers.add_parser("build-training-data", help="Membangun data latih Model A")
     p_btd.add_argument("--refresh", action="store_true", help="Perbarui data yang sudah ada")
     p_btd.add_argument("--delete-clones", action="store_true", help="Hapus klon sementara")
 
-    # train-models
     subparsers.add_parser("train-models", help="Melatih Model A dan Model B")
-
-    # snapshot-repos
     subparsers.add_parser("snapshot-repos", help="Memperbarui metrik snapshot repositori pantau")
+    subparsers.add_parser("scrape-repos", help="Scraping incremental komentar dan rilis repositori pantau")
 
-    # export-label-sample
     p_els = subparsers.add_parser("export-label-sample", help="Ekspor sampel komentar untuk pelabelan manual")
     p_els.add_argument("--n", type=int, default=200, help="Jumlah sampel")
 
-    # validate-sentiment
     subparsers.add_parser("validate-sentiment", help="Validasi akurasi sentimen terhadap label manual")
-
-    # rescore
     subparsers.add_parser("rescore", help="Hitung ulang label sentimen komentar tersimpan")
 
-    # backtest-alerts
     p_ba = subparsers.add_parser("backtest-alerts", help="Uji aturan alert pada data historis")
     p_ba.add_argument("--days", type=int, default=60, help="Jumlah hari ke belakang")
     p_ba.add_argument("--repo", type=str, help="Nama repositori tertentu")
 
     args = parser.parse_args()
-
     if not args.subcommand:
         parser.print_help()
         sys.exit(0)
@@ -104,16 +138,18 @@ def main() -> None:
 def dispatch_command(args: argparse.Namespace) -> None:
     """Mengarahkan eksekusi ke fungsi handler perintah yang sesuai."""
     sub = args.subcommand
-    if sub == "init-db":
-        cmd_init_db(args)
-    elif sub == "build-training-data":
-        cmd_build_training_data(args)
-    elif sub == "train-models":
-        cmd_train_models(args)
-    elif sub == "snapshot-repos":
-        cmd_snapshot_repos(args)
-    elif sub in ("export-label-sample", "validate-sentiment", "rescore"):
-        cmd_stub(sub, "Milestone M3")
+    handlers = {
+        "init-db": cmd_init_db,
+        "build-training-data": cmd_build_training_data,
+        "train-models": cmd_train_models,
+        "snapshot-repos": cmd_snapshot_repos,
+        "scrape-repos": cmd_scrape_repos,
+        "export-label-sample": cmd_export_label_sample,
+        "validate-sentiment": cmd_validate_sentiment,
+        "rescore": cmd_rescore,
+    }
+    if sub in handlers:
+        handlers[sub](args)
     elif sub == "backtest-alerts":
         cmd_stub(sub, "Milestone M4")
     else:
