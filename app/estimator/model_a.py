@@ -26,8 +26,8 @@ def _evaluate_repeated_cv(
     n_splits: int = 5,
     n_repeats: int = 20,
     random_state: int = 42,
-) -> tuple[float, float, float]:
-    """Menghitung rata-rata MAE, R2 out-of-fold, dan baseline median MAE pada skala asli."""
+) -> tuple[float, float, float, np.ndarray]:
+    """Menghitung MAE, R2, baseline MAE, dan rata-rata prediksi out-of-fold skala asli."""
     n_samples = len(X)
     actual_splits = max(2, min(n_splits, n_samples))
     rkf = RepeatedKFold(n_splits=actual_splits, n_repeats=n_repeats, random_state=random_state)
@@ -36,10 +36,10 @@ def _evaluate_repeated_cv(
     fold_baseline_maes: list[float] = []
     repeat_r2s: list[float] = []
     y_orig_all = np.expm1(y) if is_log else y
+    oof_accum = np.zeros(n_samples, dtype=float)
 
     for r_idx in range(n_repeats):
         oof_preds = np.zeros(n_samples, dtype=float)
-        # Ambil subset lipatan untuk repeat ini
         split_gen = rkf.split(X)
         for _ in range(r_idx * actual_splits):
             next(split_gen)
@@ -61,11 +61,13 @@ def _evaluate_repeated_cv(
             fold_baseline_maes.append(float(mean_absolute_error(y_val_orig, pred_base)))
 
         repeat_r2s.append(float(r2_score(y_orig_all, oof_preds)))
+        oof_accum += oof_preds
 
     cv_mae = float(np.mean(fold_maes))
     cv_r2 = float(np.mean(repeat_r2s))
     baseline_mae_cv = float(np.mean(fold_baseline_maes))
-    return cv_mae, cv_r2, baseline_mae_cv
+    mean_oof_preds = oof_accum / float(n_repeats)
+    return cv_mae, cv_r2, baseline_mae_cv, mean_oof_preds
 
 
 def _calculate_diagnostics(
@@ -111,10 +113,22 @@ def _calculate_diagnostics(
     }
 
     rho_contrib = spearman_corr.get("duration_vs_n_contributors", 0.0)
-    finding = (
-        f"Durasi berkorelasi dengan kontributor kumulatif (\u03c1 = {rho_contrib:.2f}); "
-        "ini mencerminkan usia proyek, bukan efek menambah anggota."
-    )
+    abs_rho = abs(rho_contrib)
+    if abs_rho >= 0.5:
+        finding = (
+            f"korelasi kuat, \u03c1 = {rho_contrib:.2f}; durasi berkorelasi dengan kontributor kumulatif, "
+            "ini mencerminkan usia proyek, bukan efek menambah anggota."
+        )
+    elif abs_rho >= 0.3:
+        finding = (
+            f"korelasi sedang, \u03c1 = {rho_contrib:.2f}; durasi berkorelasi dengan kontributor kumulatif, "
+            "ini mencerminkan usia proyek, bukan efek menambah anggota."
+        )
+    else:
+        finding = (
+            f"korelasi lemah, \u03c1 = {rho_contrib:.2f}; "
+            "jumlah kontributor tidak memprediksi durasi pada data ini"
+        )
     return {
         "spearman_correlation": spearman_corr,
         "sign_stability": sign_stability,
@@ -129,15 +143,16 @@ def train_model_a(df_train: pd.DataFrame) -> tuple[Any, dict[str, Any]]:
     X_raw = df_train[features].to_numpy(dtype=float)
     y_raw = df_train["duration_months"].to_numpy(dtype=float)
 
-    mae_raw_cv, r2_raw_cv, base_raw_cv = _evaluate_repeated_cv(X_raw, y_raw, is_log=False)
+    mae_raw_cv, r2_raw_cv, base_raw_cv, oof_raw = _evaluate_repeated_cv(X_raw, y_raw, is_log=False)
     X_log = np.log1p(X_raw)
     y_log = np.log1p(y_raw)
-    mae_log_cv, r2_log_cv, base_log_cv = _evaluate_repeated_cv(X_log, y_log, is_log=True)
+    mae_log_cv, r2_log_cv, base_log_cv, oof_log = _evaluate_repeated_cv(X_log, y_log, is_log=True)
 
     use_log = mae_log_cv < mae_raw_cv
     variant = "log1p" if use_log else "raw"
     X_chosen = X_log if use_log else X_raw
     y_chosen = y_log if use_log else y_raw
+    oof_chosen = oof_log if use_log else oof_raw
 
     cv_mae = mae_log_cv if use_log else mae_raw_cv
     cv_r2 = r2_log_cv if use_log else r2_raw_cv
@@ -159,8 +174,18 @@ def train_model_a(df_train: pd.DataFrame) -> tuple[Any, dict[str, Any]]:
     diagnostics = _calculate_diagnostics(df_train, X_chosen, y_chosen, features)
     pairs = [
         {"actual": round(float(a), 2), "predicted": round(float(p), 2)}
-        for a, p in zip(y_te_orig[:200], y_pred_orig[:200])
+        for a, p in zip(y_raw[:200], oof_chosen[:200])
     ]
+
+    durations = df_train["duration_months"].to_numpy(dtype=float)
+    q25 = round(float(np.percentile(durations, 25)), 2)
+    q75 = round(float(np.percentile(durations, 75)), 2)
+    typical_duration = {
+        "median": round(float(np.median(durations)), 2),
+        "q25": q25,
+        "q75": q75,
+        "iqr": round(float(q75 - q25), 2),
+    }
 
     metrics = {
         "variant": variant,
@@ -183,6 +208,7 @@ def train_model_a(df_train: pd.DataFrame) -> tuple[Any, dict[str, Any]]:
         },
         "diagnostics": diagnostics,
         "pairs": pairs,
+        "typical_duration": typical_duration,
         "trained_at": datetime.now().isoformat(),
     }
 

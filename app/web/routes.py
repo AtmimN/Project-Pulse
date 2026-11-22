@@ -8,7 +8,7 @@ from app import config
 from app.chatbot.engine import load_intents
 from app.db.connection import get_connection
 from app.db import repos_repo
-from app.services import chat_service, dashboard_service, estimate_service
+from app.services import chat_service, dashboard_service, estimate_service, pulse_service
 
 main_bp = Blueprint("main", __name__)
 
@@ -70,19 +70,12 @@ def api_chat() -> tuple[Response, int]:
         return jsonify({"error": "Pesan tidak boleh kosong."}), 400
 
     if len(pesan) > config.MAX_MESSAGE_LEN:
-        return jsonify(
-            {"error": f"Panjang pesan melebihi batas {config.MAX_MESSAGE_LEN} karakter."}
-        ), 400
+        return jsonify({"error": f"Panjang pesan melebihi batas {config.MAX_MESSAGE_LEN} karakter."}), 400
 
     sid = _get_session_id()
     db_target = current_app.config.get("DATABASE_PATH")
-
     try:
-        hasil = chat_service.process_chat(
-            message=pesan,
-            session_id=sid,
-            db_path=db_target,
-        )
+        hasil = chat_service.process_chat(message=pesan, session_id=sid, db_path=db_target)
         return jsonify({"reply": hasil["reply"], "intent": hasil["intent"]}), 200
     except ValueError as val_err:
         return jsonify({"error": str(val_err)}), 400
@@ -98,10 +91,7 @@ def estimate_page() -> str:
     except Exception:
         monitor_repos = []
 
-    return render_template(
-        "estimate.html",
-        monitor_repos=monitor_repos,
-    )
+    return render_template("estimate.html", monitor_repos=monitor_repos)
 
 
 @main_bp.route("/api/estimate/prefill")
@@ -137,26 +127,33 @@ def api_estimate() -> tuple[Response, int]:
 
 @main_bp.route("/repositori")
 def repos_page() -> str:
-    """Menampilkan halaman Pulse Repositori (disediakan pada Milestone M3/M6)."""
-    return render_template(
-        "placeholder.html",
-        title="Pulse Repositori",
-        description="Analisis sentimen komentar issue dan review PR terkini.",
-        milestone="Milestone M3",
-    )
+    """Menampilkan halaman Pulse Repositori (analisis sentimen dan komentar)."""
+    db_target = current_app.config.get("DATABASE_PATH")
+    repo_id = request.args.get("repo", type=int)
+    page = max(1, request.args.get("page", default=1, type=int))
+    sentiment_filter = request.args.get("filter", "").strip() or None
+    data = pulse_service.get_pulse_data(repo_id, page, sentiment_filter, db_path=db_target)
+    return render_template("pulse.html", **data)
 
 
 @main_bp.route("/dashboard")
 def dashboard_page() -> str:
-    """Menampilkan halaman dashboard analitik dan metrik regresi."""
+    """Menampilkan halaman dashboard analitik, grafik Chart.js, dan metrik regresi."""
     db_target = current_app.config.get("DATABASE_PATH")
     metrics_a = dashboard_service.get_regression_a_data(db_path=db_target)
     metrics_b = dashboard_service.get_regression_b_data()
+    summary = dashboard_service.get_dashboard_summary(db_path=db_target)
+    training_data = dashboard_service.get_training_data_summary(db_path=db_target)
+    recent_alerts = dashboard_service.get_recent_alerts(limit=10, db_path=db_target)
+    scheduler_status = dashboard_service.get_scheduler_status(db_path=db_target)
     return render_template(
         "dashboard.html",
         metrics_a=metrics_a,
         metrics_b=metrics_b,
-        milestone="Milestone M2-rev / M6",
+        summary=summary,
+        training_data=training_data,
+        recent_alerts=recent_alerts,
+        scheduler_status=scheduler_status,
     )
 
 
@@ -179,12 +176,5 @@ def api_dashboard_regression_b() -> tuple[Response, int]:
     return jsonify(data), 200
 
 
-@main_bp.route("/admin")
-def admin_page() -> str:
-    """Menampilkan halaman panel admin (disediakan pada Milestone M6)."""
-    return render_template(
-        "placeholder.html",
-        title="Panel Admin ProjectPulse",
-        description="Pengelolaan intent chatbot, repositori pantau, dan pemantauan sistem.",
-        milestone="Milestone M6",
-    )
+# Impor endpoint API dashboard tambahan agar terdaftar di main_bp
+import app.web.dashboard_api  # noqa: E402, F401

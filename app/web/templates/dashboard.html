@@ -2,22 +2,79 @@
 
 {% block title %}Dashboard Analitik & Model Regresi — ProjectPulse{% endblock %}
 
+{% block extra_head %}
+<!-- CDN Chart.js untuk visualisasi data interaktif -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
 {% block content %}
 <section class="hero-section" style="padding: 2rem;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
         <div>
             <h1 class="hero-title" style="font-size: 1.75rem; margin-bottom: 0.25rem;">Dashboard Analitik Proyek</h1>
             <p class="hero-subtitle" style="font-size: 0.95rem; margin-bottom: 0;">
-                Evaluasi performa model regresi estimasi, diagnostik korelasi historis, dan status metrik proyek.
+                Evaluasi performa model regresi estimasi, diagnostik korelasi historis, grafik sentimen, dan pemantauan sistem.
             </p>
         </div>
         <span class="badge" style="background-color: var(--primary-color); color: white; padding: 0.4rem 0.8rem; border-radius: 9999px; font-size: 0.8rem;">
-            {{ milestone }}
+            Milestone M6
         </span>
     </div>
 </section>
 
+<!-- Kartu Ringkasan Atas -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+    <div class="card" style="margin: 0; padding: 1.25rem;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Komentar 30 Hari</div>
+        <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-color);">{{ summary.comments_30d }}</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Dari seluruh repositori pantau</div>
+    </div>
+    <div class="card" style="margin: 0; padding: 1.25rem;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Repositori Pantau</div>
+        <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-color);">{{ summary.monitor_repos_count }}</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Aktif dimonitor sistem</div>
+    </div>
+    <div class="card" style="margin: 0; padding: 1.25rem;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Sentimen Tertinggi</div>
+        <div style="font-size: 1.2rem; font-weight: 700; color: #16a34a; word-break: break-all;">
+            {% if summary.top_sentiment_repo %}{{ summary.top_sentiment_repo.name }} ({{ summary.top_sentiment_repo.index }}){% else %}-{% endif %}
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Berdasarkan aktivitas 30 hari</div>
+    </div>
+    <div class="card" style="margin: 0; padding: 1.25rem;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Total Estimasi Dihitung</div>
+        <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-color);">{{ summary.estimations_count }}</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Melalui halaman kalkulator</div>
+    </div>
+    <div class="card" style="margin: 0; padding: 1.25rem;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Terakhir Scraping</div>
+        <div style="font-size: 1rem; font-weight: 600; color: var(--text-color);">{{ summary.last_scraped_at }}</div>
+        <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Waktu data komentar terbaru</div>
+    </div>
+</div>
+
 <div style="display: flex; flex-direction: column; gap: 2rem;">
+    <!-- Bagian Grafik Sentimen Komentar (Chart.js) -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 1.5rem;">
+        <div class="card" style="margin: 0;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                Komposisi Sentimen 30 Hari
+            </h3>
+            <div id="container-sentiment-bar" style="position: relative; height: 260px;">
+                <canvas id="chart-sentiment-bar"></canvas>
+            </div>
+        </div>
+
+        <div class="card" style="margin: 0;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                Tren Indeks Sentimen Bulanan
+            </h3>
+            <div id="container-sentiment-trend" style="position: relative; height: 260px;">
+                <canvas id="chart-sentiment-trend"></canvas>
+            </div>
+        </div>
+    </div>
+
     <!-- Panel Model A -->
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1rem;">
@@ -41,9 +98,7 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Validasi Silang (Utama)</div>
-                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--primary-color);">
-                        MAE {{ metrics_a.cv_mae }} bulan
-                    </div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--primary-color);">MAE {{ metrics_a.cv_mae }} bulan</div>
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
                         {% if metrics_a.improvement_pct > 0 %}
                             Tebak median: {{ metrics_a.baseline_mae_cv }} bln (lebih baik {{ metrics_a.improvement_pct }}%)
@@ -55,19 +110,13 @@
 
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">R&sup2; Validasi Silang (Out-of-Fold)</div>
-                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">
-                        {{ metrics_a.cv_r2 }}
-                    </div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-                        Rata-rata 20x pengulangan 5-fold
-                    </div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">{{ metrics_a.cv_r2 }}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Rata-rata 20x pengulangan 5-fold</div>
                 </div>
 
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Data Uji (Hold-out 20%)</div>
-                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">
-                        MAE {{ metrics_a.test_mae }} bulan
-                    </div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">MAE {{ metrics_a.test_mae }} bulan</div>
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
                         {% if not metrics_a.holdout_reliable %}
                             <span style="color: #d97706; font-weight: 600;">Pelengkap: tidak andal (n = {{ metrics_a.n_test }})</span>
@@ -75,6 +124,23 @@
                             R&sup2;: {{ metrics_a.test_r2 }} (n = {{ metrics_a.n_test }})
                         {% endif %}
                     </div>
+                </div>
+            </div>
+
+            {% if metrics_a.improvement_pct <= 0 and metrics_a.typical_duration %}
+            <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #d97706; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1.5rem; color: #92400e;">
+                <strong>Gambaran Tipikal Durasi Data Latih:</strong>
+                Median durasi <strong>{{ metrics_a.typical_duration.median }} bulan</strong>,
+                rentang kuartil (Q1 &ndash; Q3) <strong>{{ metrics_a.typical_duration.q25 }} &ndash; {{ metrics_a.typical_duration.q75 }} bulan</strong> (IQR: {{ metrics_a.typical_duration.iqr }} bulan).
+                Karena model tidak lebih baik dari tebakan median, rentang tipikal ini dijadikan gambaran dasar.
+            </div>
+            {% endif %}
+
+            <!-- Scatter Plot Model A -->
+            <div style="margin-bottom: 1.5rem;">
+                <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Grafik Scatter: Durasi Aktual vs Prediksi</h3>
+                <div id="container-model-a" style="position: relative; height: 280px;">
+                    <canvas id="chart-model-a"></canvas>
                 </div>
             </div>
 
@@ -87,7 +153,7 @@
                         <thead>
                             <tr style="border-bottom: 2px solid var(--border-color); background-color: #f8fafc;">
                                 <th style="padding: 0.5rem;">Fitur</th>
-                                <th style="padding: 0.5rem;">Korelasi Spearman dgn Durasi (&rho;)</th>
+                                <th style="padding: 0.5rem;">Korelasi Spearman (&rho;)</th>
                                 <th style="padding: 0.5rem;">Kestabilan Tanda (&gt;0)</th>
                                 <th style="padding: 0.5rem;">Koefisien Terstandar (z-score)</th>
                             </tr>
@@ -120,8 +186,9 @@
                 {% endif %}
             </div>
         {% else %}
-            <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
-                <p>Model A belum dilatih. Jalankan perintah <code>python -m app.cli train-models</code> untuk menghasilkan model dan metrik.</p>
+            <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                <p style="font-size: 1rem; margin-bottom: 0.5rem;">Model A belum dilatih.</p>
+                <p style="font-size: 0.85rem;">Jalankan perintah <code>python -m app.cli train-models</code> untuk melatih model dan menghasilkan metrik evaluasi.</p>
             </div>
         {% endif %}
     </div>
@@ -139,7 +206,7 @@
         </div>
 
         {% if metrics_b %}
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Akurasi Uji (MAE Skala Asli)</div>
                     <div style="font-size: 1.35rem; font-weight: 700; color: #0f766e;">
@@ -161,19 +228,154 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Scatter Plot Model B -->
+            <div>
+                <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Grafik Scatter: Usaha Aktual vs Prediksi NASA93</h3>
+                <div id="container-model-b" style="position: relative; height: 280px;">
+                    <canvas id="chart-model-b"></canvas>
+                </div>
+            </div>
         {% else %}
-            <div style="padding: 2rem; text-align: center; color: var(--text-muted);">
-                <p>Model B belum dilatih atau berkas dataset NASA93 belum tersedia.</p>
+            <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
+                <p style="font-size: 1rem; margin-bottom: 0.5rem;">Model B belum dilatih atau berkas dataset NASA93 belum tersedia.</p>
+                <p style="font-size: 0.85rem;">Pastikan dataset <code>data/nasa93.csv</code> tersedia dan jalankan <code>python -m app.cli train-models</code>.</p>
             </div>
         {% endif %}
     </div>
 
-    <!-- Panel Informasi Fitur Berikutnya -->
-    <div class="card" style="border-style: dashed; background-color: #f8fafc;">
-        <h3 style="font-size: 1rem; margin-bottom: 0.5rem; color: var(--text-muted);">Grafik Sentimen, Alert, dan Penjadwal</h3>
-        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0;">
-            Komposisi sentimen 30 hari, grafik tren indeks sentimen bulanan, log penjadwal, dan riwayat alert aktif akan ditampilkan pada penyelesaian Milestone M3 &ndash; M6.
+    <!-- Panel Ringkasan Data Latih & Kriteria Pemilihan -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            Ringkasan Data Latih Model A & Alasan Pengeluaran
+        </h3>
+        {% if training_data.total > 0 %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Repositori Disertakan</div>
+                <div style="font-size: 1.4rem; font-weight: 700; color: #16a34a;">{{ training_data.included_count }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Lolos seluruh 9 aturan kualitas data</div>
+            </div>
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Repositori Dikeluarkan</div>
+                <div style="font-size: 1.4rem; font-weight: 700; color: #dc2626;">{{ training_data.excluded_count }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Tidak memenuhi kriteria kelayakan</div>
+            </div>
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Sebaran Durasi Kalender</div>
+                <div style="font-size: 1rem; font-weight: 600; margin-top: 0.25rem;">
+                    Median: {{ training_data.duration_distribution.median }} bln
+                </div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">
+                    Rentang: {{ training_data.duration_distribution.min }} &ndash; {{ training_data.duration_distribution.max }} bulan
+                </div>
+            </div>
+        </div>
+
+        {% if training_data.exclusion_reasons %}
+        <div>
+            <h4 style="font-size: 0.95rem; margin-bottom: 0.5rem;">Alasan Pengeluaran Repositori:</h4>
+            <ul style="font-size: 0.85rem; padding-left: 1.25rem; color: var(--text-muted);">
+                {% for reason, count in training_data.exclusion_reasons.items() %}
+                <li><strong>{{ reason }}:</strong> {{ count }} repositori</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% else %}
+        <p style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+            Data latih belum diekstraksi. Jalankan perintah <code>python -m app.cli build-training-data</code> untuk membangun dataset latih.
         </p>
+        {% endif %}
+    </div>
+
+    <!-- Riwayat Alert Terbaru & Status Penjadwal -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 1.5rem;">
+        <!-- Riwayat Alert -->
+        <div class="card" style="margin: 0;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                Riwayat Alert Terbaru
+            </h3>
+            {% if recent_alerts %}
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                    <thead>
+                        <tr style="background-color: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                            <th style="padding: 0.5rem;">Tanggal</th>
+                            <th style="padding: 0.5rem;">Repositori</th>
+                            <th style="padding: 0.5rem;">Jenis Alert</th>
+                            <th style="padding: 0.5rem;">Tingkat</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in recent_alerts %}
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 0.5rem; color: var(--text-muted);">{{ a.alert_date }}</td>
+                            <td style="padding: 0.5rem; font-weight: 600;">{{ a.repo_name }}</td>
+                            <td style="padding: 0.5rem;">{{ a.alert_type }}</td>
+                            <td style="padding: 0.5rem;">
+                                {% if a.strength == 'kuat' %}
+                                <span class="badge badge-danger">{{ a.strength }}</span>
+                                {% elif a.strength == 'sedang' %}
+                                <span class="badge badge-warning">{{ a.strength }}</span>
+                                {% else %}
+                                <span class="badge badge-muted">{{ a.strength }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Belum ada riwayat alert yang tercatat.</p>
+            {% endif %}
+        </div>
+
+        <!-- Status Penjadwal -->
+        <div class="card" style="margin: 0;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                Status Penjadwal Harian (APScheduler)
+            </h3>
+            {% if scheduler_status.has_run and scheduler_status.last_run %}
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.9rem;">
+                <div>
+                    <strong>Jadwal Harian:</strong> <code>{{ scheduler_status.schedule }}</code>
+                </div>
+                <div>
+                    <strong>Eksekusi Terakhir:</strong> {{ scheduler_status.last_run.started_at[:19] }}
+                </div>
+                <div>
+                    <strong>Pemicu:</strong> <span class="badge">{{ scheduler_status.last_run.trigger }}</span>
+                </div>
+                <div>
+                    <strong>Status:</strong>
+                    {% if scheduler_status.last_run.status == 'berhasil' %}
+                    <span class="badge badge-success">{{ scheduler_status.last_run.status }}</span>
+                    {% elif scheduler_status.last_run.status == 'gagal' %}
+                    <span class="badge badge-danger">{{ scheduler_status.last_run.status }}</span>
+                    {% else %}
+                    <span class="badge badge-warning">{{ scheduler_status.last_run.status }}</span>
+                    {% endif %}
+                </div>
+                <div>
+                    <strong>Komentar Baru:</strong> {{ scheduler_status.last_run.new_comments }} komentar
+                </div>
+                <div>
+                    <strong>Rilis Baru:</strong> {{ scheduler_status.last_run.new_releases }} rilis
+                </div>
+            </div>
+            {% else %}
+            <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                <p>Penjadwal belum pernah mengeksekusi siklus scraping.</p>
+                <div style="font-size: 0.85rem; margin-top: 0.5rem;">Jadwal harian: <code>{{ scheduler_status.schedule }}</code></div>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %}

@@ -224,3 +224,79 @@ def test_code_inspection_no_sign_flipping() -> None:
     assert "=-abs(" not in model_a_code
     assert "forced_negative" not in model_a_code
 
+
+def test_model_a_pairs_out_of_fold_and_typical_duration() -> None:
+    """Memastikan pairs diisi dari out-of-fold seluruh data latih dan typical_duration tersedia."""
+    np.random.seed(123)
+    n = 20
+    df = pd.DataFrame({
+        "n_contributors": np.random.randint(2, 20, size=n),
+        "n_work_items": np.random.randint(10, 50, size=n),
+        "kloc": np.random.uniform(2.0, 10.0, size=n),
+        "duration_months": np.random.uniform(3.0, 18.0, size=n),
+    })
+
+    _, metrics = train_model_a(df)
+    pairs = metrics.get("pairs", [])
+    # pairs harus mencakup seluruh baris data latih (20 baris), bukan hanya hold-out
+    assert len(pairs) == n
+    assert "actual" in pairs[0] and "predicted" in pairs[0]
+
+    # typical_duration harus memuat median, q25, q75, dan iqr
+    assert "typical_duration" in metrics
+    td = metrics["typical_duration"]
+    assert "median" in td and "q25" in td and "q75" in td and "iqr" in td
+    assert td["q25"] <= td["median"] <= td["q75"]
+    assert round(td["q75"] - td["q25"], 2) == td["iqr"]
+
+
+def test_diagnostics_finding_correlation_strength_tiers() -> None:
+    """Memastikan diagnostics.finding menyesuaikan kekuatan korelasi (|rho| >= 0.5, 0.3-0.5, < 0.3)."""
+    from app.estimator.model_a import _calculate_diagnostics
+    features = ["n_contributors", "n_work_items", "kloc"]
+    y_vals = [float(i) for i in range(1, 11)]
+    work_items = [10 + i * 2 for i in range(10)]
+    kloc_vals = [2.0 + i * 0.5 for i in range(10)]
+
+    # 1. Korelasi kuat (|rho| >= 0.5, rho = 1.0)
+    df_strong = pd.DataFrame({
+        "n_contributors": list(range(1, 11)),
+        "n_work_items": work_items,
+        "kloc": kloc_vals,
+        "duration_months": y_vals,
+    })
+    d_strong = _calculate_diagnostics(
+        df_strong, df_strong[features].to_numpy(dtype=float), np.array(y_vals), features
+    )
+    assert "korelasi kuat" in d_strong["finding"]
+    assert "kontributor kumulatif" in d_strong["finding"]
+    assert "mencerminkan usia proyek" in d_strong["finding"]
+
+    # 2. Korelasi sedang (0.3 <= |rho| < 0.5, rho ~ 0.44)
+    df_mod = pd.DataFrame({
+        "n_contributors": [1, 2, 3, 6, 10, 9, 8, 7, 5, 4],
+        "n_work_items": work_items,
+        "kloc": kloc_vals,
+        "duration_months": y_vals,
+    })
+    d_mod = _calculate_diagnostics(
+        df_mod, df_mod[features].to_numpy(dtype=float), np.array(y_vals), features
+    )
+    assert "korelasi sedang" in d_mod["finding"]
+    assert "kontributor kumulatif" in d_mod["finding"]
+    assert "mencerminkan usia proyek" in d_mod["finding"]
+
+    # 3. Korelasi lemah (|rho| < 0.3, rho ~ 0.15)
+    df_weak = pd.DataFrame({
+        "n_contributors": [1, 10, 2, 9, 5, 6, 4, 7, 3, 8],
+        "n_work_items": work_items,
+        "kloc": kloc_vals,
+        "duration_months": y_vals,
+    })
+    d_weak = _calculate_diagnostics(
+        df_weak, df_weak[features].to_numpy(dtype=float), np.array(y_vals), features
+    )
+    assert "korelasi lemah" in d_weak["finding"]
+    assert "jumlah kontributor tidak memprediksi durasi pada data ini" in d_weak["finding"]
+    assert "mencerminkan usia proyek" not in d_weak["finding"]
+

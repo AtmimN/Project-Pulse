@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from typing import Any
-from flask import Flask, Response
+from flask import Flask, Response, session
 
 from app import config
 from app.db.connection import init_db
 from app.web.routes import main_bp
+from app.web.admin_routes import admin_bp
+import app.web.admin_manage_routes  # noqa: F401
 
 
 def create_app(test_config: dict[str, Any] | None = None) -> Flask:
@@ -23,6 +25,12 @@ def create_app(test_config: dict[str, Any] | None = None) -> Flask:
 
     # Daftarkan blueprint tampilan web
     app.register_blueprint(main_bp)
+    app.register_blueprint(admin_bp)
+
+    @app.context_processor
+    def inject_globals() -> dict[str, Any]:
+        """Menyuntikkan token CSRF ke seluruh template Jinja2."""
+        return {"csrf_token": session.get("csrf_token", "")}
 
     @app.after_request
     def set_security_headers(response: Response) -> Response:

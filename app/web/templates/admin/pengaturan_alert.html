@@ -1,0 +1,118 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Pengaturan Alert & Kata Kunci — Admin ProjectPulse{% endblock %}
+
+{% block admin_content %}
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+    <div>
+        <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Pengaturan Ambang Alert & Kata Kunci</h1>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+            Kelola batas pemicu alert (tersimpan di <code>alert_settings</code>) dan daftar kata kunci pemantauan.
+        </p>
+    </div>
+
+    <!-- Form Ambang Batas Alert -->
+    <div class="card" style="margin: 0; padding: 1.5rem;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            Konfigurasi Tier Ambang Batas Alert
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+            Nilai yang disimpan di sini akan menimpa nilai default dari berkas konfigurasi sistem.
+        </p>
+
+        <form method="POST" action="{{ url_for('admin.update_tiers') }}" style="display: flex; flex-direction: column; gap: 1.5rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem;">
+                <!-- 1. Sentimen Turun -->
+                <div style="background-color: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary-color);">1. Penurunan Sentimen (7h vs 30h)</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem;">
+                        <label>Lemah (&Delta; penurunan): <input type="number" step="0.01" name="sentimen_turun_lemah" value="{{ settings.sentimen_turun_lemah }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Sedang (&Delta; penurunan): <input type="number" step="0.01" name="sentimen_turun_sedang" value="{{ settings.sentimen_turun_sedang }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Kuat (&Delta; penurunan): <input type="number" step="0.01" name="sentimen_turun_kuat" value="{{ settings.sentimen_turun_kuat }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                    </div>
+                </div>
+
+                <!-- 2. Lonjakan Komentar Negatif -->
+                <div style="background-color: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary-color);">2. Lonjakan Komentar Negatif</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem;">
+                        <label>Lemah (x rata-rata 30h): <input type="number" step="0.1" name="lonjakan_negatif_lemah" value="{{ settings.lonjakan_negatif_lemah }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Sedang (x rata-rata 30h): <input type="number" step="0.1" name="lonjakan_negatif_sedang" value="{{ settings.lonjakan_negatif_sedang }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Kuat (x rata-rata 30h): <input type="number" step="0.1" name="lonjakan_negatif_kuat" value="{{ settings.lonjakan_negatif_kuat }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                    </div>
+                </div>
+
+                <!-- 3. Rilis Bermasalah -->
+                <div style="background-color: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary-color);">3. Masalah Pascarilis (3 Hari)</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem;">
+                        <label>Lemah (&Delta; proporsi negatif): <input type="number" step="0.01" name="rilis_bermasalah_lemah" value="{{ settings.rilis_bermasalah_lemah }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Sedang (&Delta; proporsi negatif): <input type="number" step="0.01" name="rilis_bermasalah_sedang" value="{{ settings.rilis_bermasalah_sedang }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Kuat (&Delta; proporsi negatif): <input type="number" step="0.01" name="rilis_bermasalah_kuat" value="{{ settings.rilis_bermasalah_kuat }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                    </div>
+                </div>
+
+                <!-- 4. Kata Kunci Kritis -->
+                <div style="background-color: #f8fafc; padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary-color);">4. Kemunculan Kata Kunci</h4>
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; font-size: 0.85rem;">
+                        <label>Lemah (jumlah hits hari ini): <input type="number" step="1" name="kata_kunci_lemah" value="{{ settings.kata_kunci_lemah|int }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Sedang (jumlah hits hari ini): <input type="number" step="1" name="kata_kunci_sedang" value="{{ settings.kata_kunci_sedang|int }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Kuat (jumlah hits hari ini): <input type="number" step="1" name="kata_kunci_kuat" value="{{ settings.kata_kunci_kuat|int }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                    </div>
+                </div>
+            </div>
+                        <label>Lemah (&Delta; penurunan): <input type="number" step="0.05" name="release_drop_lemah" value="{{ settings.release_drop_lemah }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Sedang (&Delta; penurunan): <input type="number" step="0.05" name="release_drop_sedang" value="{{ settings.release_drop_sedang }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                        <label>Kuat (&Delta; penurunan): <input type="number" step="0.05" name="release_drop_kuat" value="{{ settings.release_drop_kuat }}" style="width: 80px; padding: 0.3rem; float: right;"></label>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="align-self: flex-start; padding: 0.6rem 1.25rem;">
+                Simpan Pengaturan Ambang Alert
+            </button>
+        </form>
+    </div>
+
+    <!-- Kelola Kata Kunci Global -->
+    <div class="card" style="margin: 0; padding: 1.5rem;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            Daftar Kata Kunci Global ({{ keywords|length }})
+        </h3>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+            Kata kunci yang dicocokkan pada komentar untuk mendeteksi topik kritis (huruf kecil, 2&ndash;30 karakter, tanpa duplikat).
+        </p>
+
+        <!-- Daftar Chips Kata Kunci -->
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem;">
+            {% for kw in keywords %}
+            <div style="display: inline-flex; align-items: center; gap: 0.35rem; background-color: #f1f5f9; border: 1px solid var(--border-color); border-radius: 9999px; padding: 0.3rem 0.75rem; font-size: 0.85rem;">
+                <span>{{ kw.word }}</span>
+                <form method="POST" action="{{ url_for('admin.delete_keyword') }}" style="margin: 0; display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="keyword_id" value="{{ kw.id }}">
+                    <button type="submit" style="background: none; border: none; color: #dc2626; cursor: pointer; padding: 0; font-size: 1rem; line-height: 1;">&times;</button>
+                </form>
+            </div>
+            {% else %}
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Belum ada kata kunci terdaftar.</p>
+            {% endfor %}
+        </div>
+
+        <!-- Form Tambah Kata Kunci -->
+        <div style="background-color: #f8fafc; padding: 1rem; border-radius: 6px; border: 1px solid var(--border-color);">
+            <form method="POST" action="{{ url_for('admin.add_keyword') }}" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="text" name="word" placeholder="Kata kunci baru (misal: vulnerability)..." required
+                       style="flex: 1; min-width: 250px; padding: 0.4rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.85rem;">
+                <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.85rem; font-size: 0.85rem;">
+                    + Tambah Kata Kunci
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

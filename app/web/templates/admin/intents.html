@@ -1,0 +1,133 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Kelola Intent Chatbot — Admin ProjectPulse{% endblock %}
+
+{% block admin_content %}
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Pengelolaan Intent Chatbot</h1>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+                Tambah, ubah pola pertanyaan, dan kelola jawaban asisten PM-Bot.
+            </p>
+        </div>
+        <button onclick="document.getElementById('form-add-intent').scrollIntoView({behavior: 'smooth'})" class="btn btn-primary">
+            + Tambah Intent Baru
+        </button>
+    </div>
+
+    <!-- Tabel Daftar Intent -->
+    <div class="card" style="margin: 0;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            Daftar Seluruh Intent ({{ intents|length }})
+        </h3>
+        <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+            {% for it in intents %}
+            <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1.25rem; background-color: #fff;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem;">
+                    <div>
+                        <strong style="font-size: 1.1rem; color: var(--primary-color);">{{ it.tag }}</strong>
+                        {% if it.handler %}
+                        <span class="badge" style="background-color: #fef3c7; color: #92400e; margin-left: 0.5rem;">
+                            Dinamis (Handler: {{ it.handler }})
+                        </span>
+                        {% else %}
+                        <span class="badge" style="background-color: #f1f5f9; color: #475569; margin-left: 0.5rem;">
+                            Statis
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button type="button" class="btn btn-outline" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;"
+                                onclick="toggleEdit('edit-{{ it.tag }}')">
+                            Ubah
+                        </button>
+                        {% if not it.handler %}
+                        <form method="POST" action="{{ url_for('admin.delete_intent') }}" style="margin: 0;"
+                              onsubmit="return confirm('Hapus intent {{ it.tag }}?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="tag" value="{{ it.tag }}">
+                            <button type="submit" class="btn btn-outline" style="padding: 0.25rem 0.6rem; font-size: 0.8rem; color: #dc2626; border-color: #fca5a5;">
+                                Hapus
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+                    <strong>Pola Pertanyaan ({{ it.patterns|length }}):</strong>
+                    {{ it.patterns|join(', ') }}
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-color);">
+                    <strong>Jawaban {% if it.handler %}(Cadangan/Fallback){% endif %}:</strong>
+                    <ul style="margin: 0.25rem 0 0 1.25rem; padding: 0;">
+                        {% for resp in it.responses %}
+                        <li style="margin-bottom: 0.25rem;">{{ resp }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+
+                <!-- Form Ubah Intent (Tersembunyi Awalnya) -->
+                <div id="edit-{{ it.tag }}" style="display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed var(--border-color);">
+                    <form method="POST" action="{{ url_for('admin.edit_intent') }}" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="tag" value="{{ it.tag }}">
+
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 600;">Pola Pertanyaan (1 per baris):</label>
+                            <textarea name="patterns" rows="4" style="width: 100%; padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box;">{{ it.patterns|join('\n') }}</textarea>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; font-weight: 600;">Daftar Jawaban (1 per baris):</label>
+                            <textarea name="responses" rows="4" style="width: 100%; padding: 0.5rem; font-size: 0.85rem; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box;">{{ it.responses|join('\n') }}</textarea>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Simpan Perubahan</button>
+                            <button type="button" class="btn btn-outline" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" onclick="toggleEdit('edit-{{ it.tag }}')">Batal</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Form Tambah Intent Baru -->
+    <div id="form-add-intent" class="card" style="margin: 0; padding: 1.5rem; background-color: #f8fafc;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1rem;">Tambah Intent Statis Baru</h3>
+        <form method="POST" action="{{ url_for('admin.add_intent') }}" style="display: flex; flex-direction: column; gap: 1rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div>
+                <label for="new-tag" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem;">Tag Intent (unik, huruf kecil tanpa spasi)</label>
+                <input type="text" id="new-tag" name="tag" required placeholder="misal: jadwal_proyek"
+                       style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box;">
+            </div>
+
+            <div>
+                <label for="new-patterns" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem;">Pola Pertanyaan (1 per baris)</label>
+                <textarea id="new-patterns" name="patterns" rows="3" required placeholder="kapan proyek selesai&#10;timeline proyek"
+                          style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div>
+                <label for="new-responses" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem;">Daftar Jawaban (1 per baris)</label>
+                <textarea id="new-responses" name="responses" rows="3" required placeholder="Jadwal proyek diatur berdasarkan fase estimasi."
+                          style="width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 6px; box-sizing: border-box;"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="padding: 0.6rem; align-self: flex-start;">
+                + Simpan Intent Baru
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleEdit(id) {
+    var el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

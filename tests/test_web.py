@@ -65,11 +65,18 @@ def test_dashboard_and_api_endpoints(client: FlaskClient) -> None:
     assert isinstance(data_b, dict)
 
 
-def test_placeholder_pages(client: FlaskClient) -> None:
-    """Memastikan seluruh menu navigasi belum selesai tetap dapat diakses tanpa error 404."""
-    routes = ["/repositori", "/dashboard", "/admin"]
-    for route in routes:
-        response = client.get(route)
-        assert response.status_code == 200
-        html = response.get_data(as_text=True)
-        assert "Milestone" in html
+def test_navigation_pages(client: FlaskClient) -> None:
+    """Memastikan seluruh halaman utama dapat diakses dan placeholder telah digantikan."""
+    resp_repo = client.get("/repositori")
+    assert resp_repo.status_code == 200
+    html_repo = resp_repo.get_data(as_text=True)
+    assert "Pulse Repositori" in html_repo
+    assert "Target: Milestone M3" not in html_repo
+
+    resp_dash = client.get("/dashboard")
+    assert resp_dash.status_code == 200
+    assert "Dashboard Analitik" in resp_dash.get_data(as_text=True)
+
+    resp_admin = client.get("/admin")
+    assert resp_admin.status_code == 302
+    assert "/admin/login" in resp_admin.headers.get("Location", "")

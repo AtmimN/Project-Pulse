@@ -1,0 +1,83 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Log Percakapan Chatbot — Admin ProjectPulse{% endblock %}
+
+{% block admin_content %}
+<div style="display: flex; flex-direction: column; gap: 1.5rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Log Percakapan Chatbot</h1>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+                Riwayat interaksi pengunjung dengan asisten PM-Bot (terbaru di atas, 20 baris per halaman).
+            </p>
+        </div>
+
+        <form method="GET" action="{{ url_for('admin.logs') }}" style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="text" name="intent" value="{{ intent_filter }}" placeholder="Filter tag intent..."
+                   style="padding: 0.4rem 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); font-size: 0.85rem;">
+            <button type="submit" class="btn btn-primary" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">Filter</button>
+            {% if intent_filter %}
+            <a href="{{ url_for('admin.logs') }}" class="btn btn-outline" style="padding: 0.4rem 0.75rem; font-size: 0.85rem;">Reset</a>
+            {% endif %}
+        </form>
+    </div>
+
+    <div class="card" style="margin: 0;">
+        {% if logs %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                <thead>
+                    <tr style="background-color: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 0.6rem; width: 140px;">Waktu</th>
+                        <th style="padding: 0.6rem; width: 130px;">Intent</th>
+                        <th style="padding: 0.6rem;">Pesan Pengunjung</th>
+                        <th style="padding: 0.6rem;">Jawaban Bot</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for l in logs %}
+                    <tr class="{% if l.intent == 'fallback' %}row-fallback{% endif %}" style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.6rem; color: var(--text-muted); font-size: 0.8rem;">
+                            {{ l.created_at[:19] }}
+                        </td>
+                        <td style="padding: 0.6rem;">
+                            {% if l.intent == 'fallback' %}
+                            <span class="badge" style="background-color: #fef3c7; color: #b45309; font-weight: 700;">
+                                ⚠️ Fallback
+                            </span>
+                            {% elif l.intent %}
+                            <span class="badge" style="background-color: #f1f5f9; color: var(--primary-color);">
+                                {{ l.intent }}
+                            </span>
+                            {% else %}
+                            <span style="color: var(--text-muted);">-</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 0.6rem; font-weight: 500;">
+                            {{ l.message }}
+                        </td>
+                        <td style="padding: 0.6rem; color: var(--text-muted); font-size: 0.8rem;">
+                            {{ l.reply }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginasi -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 1rem; font-size: 0.85rem;">
+            <div>Halaman {{ page }}</div>
+            <div style="display: flex; gap: 0.5rem;">
+                {% if page > 1 %}
+                <a href="{{ url_for('admin.logs', page=page-1, intent=intent_filter) }}" class="btn btn-outline" style="padding: 0.3rem 0.75rem;">&larr; Sebelumnya</a>
+                {% endif %}
+                <a href="{{ url_for('admin.logs', page=page+1, intent=intent_filter) }}" class="btn btn-outline" style="padding: 0.3rem 0.75rem;">Selanjutnya &rarr;</a>
+            </div>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--text-muted); padding: 2rem;">Belum ada riwayat percakapan yang tercatat.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

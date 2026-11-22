@@ -1,0 +1,171 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Pemantauan Sistem — Admin ProjectPulse{% endblock %}
+
+{% block admin_content %}
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Pemantauan Sistem & Bot</h1>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+                Monitoring pelanggan Bot Telegram (disamarkan), riwayat alert terkirim, dan log penjadwal harian.
+            </p>
+        </div>
+        <form method="POST" action="{{ url_for('admin.scrape_now') }}" style="margin: 0;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn-primary" onclick="return confirm('Mulai proses scraping sekarang?')">
+                ⚡ Jalankan Scraping Manual
+            </button>
+        </form>
+    </div>
+
+    <!-- Pelanggan Bot Telegram -->
+    <div class="card" style="margin: 0;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            Pelanggan Bot Telegram ({{ subscribers|length }})
+        </h3>
+        {% if subscribers %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                <thead>
+                    <tr style="background-color: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 0.5rem;">ID Chat Tersamar</th>
+                        <th style="padding: 0.5rem;">Sensitivitas</th>
+                        <th style="padding: 0.5rem;">Watchlist</th>
+                        <th style="padding: 0.5rem;">Status</th>
+                        <th style="padding: 0.5rem; width: 120px;">Tindakan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in subscribers %}
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.5rem; font-family: monospace; font-weight: 600;">{{ s.masked_chat_id }}</td>
+                        <td style="padding: 0.5rem;"><span class="badge">{{ s.sensitivity }}</span></td>
+                        <td style="padding: 0.5rem;">{{ s.watchlist_count }} repo</td>
+                        <td style="padding: 0.5rem;">
+                            {% if s.active %}
+                            <span class="badge badge-success">Aktif</span>
+                            {% else %}
+                            <span class="badge badge-danger">Nonaktif</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 0.5rem;">
+                            <form method="POST" action="{{ url_for('admin.toggle_subscriber') }}" style="margin: 0;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="token" value="{{ s.token }}">
+                                {% if s.active %}
+                                <input type="hidden" name="active" value="0">
+                                <button type="submit" class="btn btn-outline" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;">Nonaktifkan</button>
+                                {% else %}
+                                <input type="hidden" name="active" value="1">
+                                <button type="submit" class="btn btn-outline" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;">Aktifkan</button>
+                                {% endif %}
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Belum ada pelanggan terdaftar di sistem.</p>
+        {% endif %}
+    </div>
+
+    <!-- Riwayat Alert Terkirim -->
+    <div class="card" style="margin: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            <h3 style="font-size: 1.1rem; margin: 0;">Riwayat Evaluasi Alert</h3>
+            <form method="GET" action="{{ url_for('admin.pemantauan') }}" style="display: flex; gap: 0.5rem;">
+                <input type="text" name="repo" placeholder="Filter repo..." style="padding: 0.35rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                <input type="text" name="type" placeholder="Filter tipe (spike/drop)..." style="padding: 0.35rem 0.6rem; font-size: 0.8rem; border: 1px solid var(--border-color); border-radius: 4px;">
+                <button type="submit" class="btn btn-primary" style="padding: 0.35rem 0.65rem; font-size: 0.8rem;">Filter</button>
+            </form>
+        </div>
+
+        {% if alerts %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                <thead>
+                    <tr style="background-color: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 0.5rem;">Tanggal</th>
+                        <th style="padding: 0.5rem;">Repositori</th>
+                        <th style="padding: 0.5rem;">Tipe Alert</th>
+                        <th style="padding: 0.5rem;">Tingkat</th>
+                        <th style="padding: 0.5rem;">Ringkasan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in alerts %}
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.5rem; color: var(--text-muted);">{{ a.alert_date }}</td>
+                        <td style="padding: 0.5rem; font-weight: 600;">{{ a.repo_name }}</td>
+                        <td style="padding: 0.5rem;">{{ a.alert_type }}</td>
+                        <td style="padding: 0.5rem;">
+                            {% if a.strength == 'kuat' %}
+                            <span class="badge badge-danger">{{ a.strength }}</span>
+                            {% elif a.strength == 'sedang' %}
+                            <span class="badge badge-warning">{{ a.strength }}</span>
+                            {% else %}
+                            <span class="badge badge-muted">{{ a.strength }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+                            {% if a.detail %}{{ a.detail|tojson }}{% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Tidak ada riwayat alert yang cocok.</p>
+        {% endif %}
+    </div>
+
+    <!-- Log Penjadwal Harian (job_runs) -->
+    <div class="card" style="margin: 0;">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+            Log Eksekusi Tugas Penjadwal (job_runs)
+        </h3>
+        {% if jobs %}
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                <thead>
+                    <tr style="background-color: #f8fafc; border-bottom: 2px solid var(--border-color);">
+                        <th style="padding: 0.5rem;">Mulai</th>
+                        <th style="padding: 0.5rem;">Tugas</th>
+                        <th style="padding: 0.5rem;">Pemicu</th>
+                        <th style="padding: 0.5rem;">Status</th>
+                        <th style="padding: 0.5rem;">Komentar</th>
+                        <th style="padding: 0.5rem;">Rilis</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for j in jobs %}
+                    <tr style="border-bottom: 1px solid var(--border-color);">
+                        <td style="padding: 0.5rem; color: var(--text-muted);">{{ j.started_at[:19] }}</td>
+                        <td style="padding: 0.5rem; font-weight: 600;">{{ j.job_name }}</td>
+                        <td style="padding: 0.5rem;"><span class="badge">{{ j.trigger }}</span></td>
+                        <td style="padding: 0.5rem;">
+                            {% if j.status == 'berhasil' %}
+                            <span class="badge badge-success">{{ j.status }}</span>
+                            {% elif j.status == 'gagal' %}
+                            <span class="badge badge-danger">{{ j.status }}</span>
+                            {% else %}
+                            <span class="badge badge-warning">{{ j.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="padding: 0.5rem;">+{{ j.new_comments }}</td>
+                        <td style="padding: 0.5rem;">+{{ j.new_releases }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Belum ada log eksekusi tugas.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

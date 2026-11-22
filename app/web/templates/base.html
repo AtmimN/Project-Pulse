@@ -17,7 +17,7 @@
                 <li><a href="{{ url_for('main.estimate_page') }}" class="{% if request.endpoint == 'main.estimate_page' %}active{% endif %}">Estimasi</a></li>
                 <li><a href="{{ url_for('main.repos_page') }}" class="{% if request.endpoint == 'main.repos_page' %}active{% endif %}">Pulse Repositori</a></li>
                 <li><a href="{{ url_for('main.dashboard_page') }}" class="{% if request.endpoint == 'main.dashboard_page' %}active{% endif %}">Dashboard</a></li>
-                <li><a href="{{ url_for('main.admin_page') }}" class="{% if 'admin' in (request.endpoint or '') %}active{% endif %}">Admin</a></li>
+                <li><a href="{{ url_for('admin.index') }}" class="{% if 'admin' in (request.endpoint or '') %}active{% endif %}">Admin</a></li>
             </ul>
         </nav>
     </header>

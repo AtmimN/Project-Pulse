@@ -125,9 +125,27 @@ body {
 }
 
 .badge-success {
-    background-color: rgba(16, 185, 129, 0.2);
-    color: #34d399;
-    border: 1px solid rgba(16, 185, 129, 0.4);
+    background-color: #dcfce7;
+    color: #16a34a;
+}
+
+.badge-danger {
+    background-color: #fee2e2;
+    color: #dc2626;
+}
+
+.badge-warning {
+    background-color: #fef3c7;
+    color: #d97706;
+}
+
+.badge-muted {
+    background-color: #f1f5f9;
+    color: #64748b;
+}
+
+.row-fallback {
+    background-color: #fffbeb;
 }
 
 .grid-cards {

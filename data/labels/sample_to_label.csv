@@ -1,7 +1,4 @@
 comment_id,text,label
-102,"Removing --prod was left over from my troubleshooting (I tried that first based on the earlier suggestion here, and it didn't help). The actual fix is only the HOME line. I've since tested ExecStart=/usr/bin/node app.js --prod together with Environment=HOME=/root and it starts fine too. With Environment=NODE_ENV=production set, --prod is redundant anyway, since both put Sails in production mode, so either form works.",
-119,"@joonass-visma I had the same issue, this is fixed in source by #436, but the published 2.6.1 bundles were built before that merge (headless/index.mjs is byte-identical to 2.6.0's), so it will be resolved once a rebuilt release ships 🙌 ",
-93,"Fixed in 2.3.1 (e376d8b6). In our reproduction on 2.3.0 the crash came when opening the description editor, not on the card click itself. If a plain card click still fails for you on 2.3.1, please reopen with the console error.",
 36,"This is the most useful translation PR we have had in a while, and I want to be straight with you about what happened to it.
 
 We merged a bulk pass on September 8th that filled the missing keys in every locale, so the new strings in your PR now collide with ours. That part is redundant through no fault of yours, your PR was open first.
@@ -12,29 +9,18 @@ Your corrections to the existing strings are in, along with the login and markdo
 
 If you want to go through the new strings we landed and fix anything that reads badly in Swedish, please do. You clearly know this file better than we do.
 ",
-75,"I reproduced this on 2.1.1 and found the root cause. The cause is the Express version, not the Planka code. Planka v2.2.0 and later already fix it.
+76,I see this has now been fixed on `master` in `ad532605` and #1779 has been closed. I'm closing this PR as superseded. Thanks!,
+71,@dependabot rebase,
+29,"Merged, thank you. This is a real gap closed, and wrapping the existing label keys instead of inventing new text for every button was the right call.
 
-**Root cause**
+Three things we did on top rather than sending the PR back to you.
 
-1. Planka 2.1.1 locks `express@4.22.0`. This version parses query strings with `qs.parse(str, { plainObjects: true })`. The nested `before[...]` object then has a `null` prototype.
-2. Sails validates the `type: 'json'` input with `rttc`. `rttc/lib/helpers/types.js:463` reads `v.constructor.name`. The object has no `constructor`, so the call throws `TypeError: Cannot read properties of undefined (reading 'name')`. The server answers 500, also for invalid cursors.
-3. `express@4.22.1` and later use `qs.parse(str, { allowPrototypes: true, arrayLimit: 1000 })` again. Planka v2.2.0, v2.2.1 and `master` lock `express@4.22.2`.
+The tooltip now stays hidden on touch devices. With hover and focus as triggers, tapping a button gives it focus and the tooltip appears over the interface, which is not what anyone wants on a phone.
 
-**Test**
+We replaced the `switchToView` key. ""Switch to {{view}} view"" with a view name interpolated into it needed `t('common.' + view).toLowerCase()` at the call site, and lowercasing an already translated string goes wrong in German, where nouns are capitalised, and in Turkish, where it turns I into ı. There are now five complete strings, one per view, and no lowercasing.
 
-I used an integration test on the test datastore: an archive list with 3 cards, then a request with `before[listChangedAt]` + `before[id]`, then a request with an invalid cursor.
+And we filled the new keys into all 35 locales rather than just en-US and ru-RU, so the release does not ship a partly translated tooltip layer.
 
-| Code | Valid cursor | Invalid cursor |
-| --- | --- | --- |
-| 2.1.1 | 500 | 500 |
-| 2.1.1, only the Express query parser changed to the 4.22.2 code | 200, correct order | 400 |
-| `master` | 200 | 400 |
-
-The `type: 'ref'` change and the SQL changes are therefore not necessary. They work around the Express bug.
-
-**Fix for 2.1.1 users**
-
-Upgrade Planka to v2.2.x, or upgrade `express` to 4.22.1 or later in the image.
-
-I think this issue can be closed.
+None of that is a criticism of the PR. They were just faster for us to do than to describe.
 ",
+82,"2.3.0 adds `@name` mentions in card descriptions (f23ce6e0, 2413ddd1), next to the existing comment mentions, plus comment replies.",

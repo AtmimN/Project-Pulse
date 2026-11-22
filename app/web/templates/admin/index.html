@@ -1,0 +1,78 @@
+{% extends "admin/base_admin.html" %}
+
+{% block title %}Ringkasan Admin — ProjectPulse{% endblock %}
+
+{% block admin_content %}
+<div style="display: flex; flex-direction: column; gap: 2rem;">
+    <div>
+        <h1 style="font-size: 1.5rem; margin-bottom: 0.25rem;">Ringkasan Panel Administrator</h1>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">
+            Pusat kendali konfigurasi chatbot, pengelolaan repositori, dan pemantauan sistem.
+        </p>
+    </div>
+
+    {% if repos_data.duplicate_warning %}
+    <div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 1rem; border-radius: 8px;">
+        <strong>Peringatan Duplikasi Repositori:</strong> Repositori berikut muncul di kedua daftar (pantau dan latih):
+        <ul style="margin: 0.5rem 0 0 1.25rem;">
+            {% for dup in repos_data.duplicate_warning %}
+            <li><code>{{ dup }}</code></li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem;">
+        <div class="card" style="margin: 0; padding: 1.5rem;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Repositori Pantau</h3>
+            <div style="font-size: 2rem; font-weight: 700; color: var(--primary-color);">
+                {{ repos_data.monitor_repos|length }} / {{ repos_data.max_monitor_repos }}
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 1rem 0;">
+                Repositori aktif yang komentar & rilisnya discrape berkala.
+            </p>
+            <a href="{{ url_for('admin.repos') }}" class="btn btn-outline" style="font-size: 0.85rem;">Kelola Repositori &rarr;</a>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 1.5rem;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Pelanggan Bot Telegram</h3>
+            <div style="font-size: 2rem; font-weight: 700; color: #0f766e;">
+                {{ subscribers_count }}
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 1rem 0;">
+                Pengguna terdaftar yang menerima alert & ringkasan.
+            </p>
+            <a href="{{ url_for('admin.pemantauan') }}" class="btn btn-outline" style="font-size: 0.85rem;">Buka Pemantauan &rarr;</a>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 1.5rem;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 0.5rem;">Intent Chatbot PM-Bot</h3>
+            <div style="font-size: 0.95rem; font-weight: 600; color: var(--text-color); margin-top: 0.5rem;">
+                Aturan & Pola Respons
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.5rem 0 1rem 0;">
+                Kelola pertanyaan, sinonim pola, dan jawaban asisten.
+            </p>
+            <a href="{{ url_for('admin.intents') }}" class="btn btn-outline" style="font-size: 0.85rem;">Kelola Intent &rarr;</a>
+        </div>
+    </div>
+
+    <!-- Panel Tindakan Cepat Scraping -->
+    <div class="card" style="padding: 1.5rem; background-color: #f8fafc; border: 1px dashed var(--border-color);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h3 style="font-size: 1.1rem; margin-bottom: 0.25rem;">Jalankan Scraping Sekarang</h3>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">
+                    Memanggil pengambilan komentar & rilis terbaru dari seluruh repositori pantau aktif.
+                </p>
+            </div>
+            <form method="POST" action="{{ url_for('admin.scrape_now') }}" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-primary" onclick="return confirm('Jalankan proses scraping seluruh repositori pantau sekarang?')">
+                    ⚡ Jalankan Scraping Manual
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
