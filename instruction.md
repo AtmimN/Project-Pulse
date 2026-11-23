@@ -67,6 +67,7 @@ Kunci rancangan:
 7. `docs/instruction/07-penjadwal-alert.md`
 8. `docs/instruction/09-pengujian-dod.md` — kasus uji dan Definition of Done
 9. `docs/instruction/08-git-workflow.md` — catatan untuk pemilik repositori (AI cukup membaca daftar milestone)
+10. `docs/instruction/10-revisi-m6.md` — revisi M6-rev; **menimpa** bagian `03`, `05`, dan `09` yang disebut di dalamnya
 
 ## 5. Urutan Pengerjaan
 
@@ -82,6 +83,7 @@ Kerjakan berurutan. Setelah tiap milestone selesai, **berhenti sebentar dan beri
 | M4 | Mesin alert + penjadwal (harian + susulan) + log eksekusi + backtest alert | Tes alert dan penjadwal lulus |
 | M5 | Bot Telegram: perintah, notifier, digest harian | Tes bot lulus dengan klien tiruan |
 | M6 | Halaman Pulse Repositori, dashboard Chart.js, admin dan pemantauan | Semua halaman dan grafik berfungsi |
+| M6-rev | Estimasi hanya Model B, evaluasi durasi GitHub sebagai temuan, benchmark durasi, perbaikan scatter Model B, dan Kartu Kesehatan Repositori; lihat `10-revisi-m6.md`. Terapkan pada kode yang ada | Tes baru lulus; semua halaman dan grafik berfungsi |
 | M7 | Pengujian menyeluruh, README final, tinjauan akhir | Semua centang di `09-pengujian-dod.md` terpenuhi |
 
 ## 6. Laporan Akhir

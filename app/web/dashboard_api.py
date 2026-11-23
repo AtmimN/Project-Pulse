@@ -54,3 +54,10 @@ def api_dashboard_scheduler_status() -> tuple[Response, int]:
     """Endpoint REST API status eksekusi terakhir dan jadwal penjadwal harian."""
     db_target = current_app.config.get("DATABASE_PATH")
     return jsonify(dashboard_service.get_scheduler_status(db_path=db_target)), 200
+
+
+@main_bp.route("/api/dashboard/duration-benchmark")
+def api_dashboard_duration_benchmark() -> tuple[Response, int]:
+    """Endpoint REST API benchmark durasi repositori open source."""
+    db_target = current_app.config.get("DATABASE_PATH")
+    return jsonify(dashboard_service.get_duration_benchmark(db_path=db_target)), 200

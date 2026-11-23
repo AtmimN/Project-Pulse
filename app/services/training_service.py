@@ -10,6 +10,7 @@ import pandas as pd
 
 from app import config
 from app.db import connection, repos_repo, training_rows_repo
+from app.estimator.benchmark import calculate_duration_benchmark, save_duration_benchmark
 from app.estimator.model_a import train_model_a
 from app.estimator.model_b import train_model_b
 from app.estimator.nasa93 import load_nasa93_dataset
@@ -261,7 +262,7 @@ def _export_training_csvs(included: list[dict[str, Any]], excluded: list[dict[st
 
 def train_models_service(db_path: str | Path | None = None) -> dict[str, Any]:
     """Melatih Model A (data GitHub) dan Model B (NASA93) jika data tersedia."""
-    summary: dict[str, Any] = {"model_a": None, "model_b": None, "messages": []}
+    summary: dict[str, Any] = {"model_a": None, "model_b": None, "benchmark_duration": None, "messages": []}
 
     with connection.transaction(db_path) as conn:
         rows = training_rows_repo.list_training_rows(conn, included_only=True)
@@ -272,6 +273,13 @@ def train_models_service(db_path: str | Path | None = None) -> dict[str, Any]:
         df_a = pd.DataFrame(rows)
         _, metrics_a = train_model_a(df_a)
         summary["model_a"] = metrics_a
+
+        # Bangun benchmark durasi dari baris data latih yang disertakan
+        durations = [float(r["duration_months"]) for r in rows if r.get("duration_months") is not None]
+        bench_data = calculate_duration_benchmark(durations)
+        save_duration_benchmark(bench_data)
+        summary["benchmark_duration"] = bench_data
+
         if len(rows) < config.MIN_TRAINING_ROWS:
             summary["messages"].append(
                 f"Peringatan: Jumlah data latih Model A ({len(rows)}) kurang dari {config.MIN_TRAINING_ROWS} baris."

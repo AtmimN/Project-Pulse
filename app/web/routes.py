@@ -96,18 +96,27 @@ def estimate_page() -> str:
 
 @main_bp.route("/api/estimate/prefill")
 def api_estimate_prefill() -> tuple[Response, int]:
-    """Endpoint untuk mengambil nilai awal metrik dari snapshot repositori pantau."""
+    """Endpoint untuk mengambil nilai awal metrik dari snapshot repositori pantau (now)."""
     repo = request.args.get("repo", "").strip()
     as_of = request.args.get("as_of", "now").strip()
     if not repo:
-        return jsonify({"error": "Parameter query 'repo' wajib disertakan."}), 400
+        return jsonify({"error": "invalid_repo", "pesan": "Parameter query 'repo' wajib disertakan."}), 400
+
+    from app.scraper.repo_metrics import validate_repo_name
+    if not validate_repo_name(repo):
+        return jsonify({"error": "invalid_repo", "pesan": "Nama repositori tidak valid."}), 400
+
+    if as_of != "now":
+        return jsonify({"error": "invalid_as_of", "pesan": "Hanya snapshot 'now' yang didukung untuk prefill."}), 400
 
     db_target = current_app.config.get("DATABASE_PATH")
     try:
-        prefill_data = estimate_service.get_prefill_data(repo, as_of=as_of, db_path=db_target)
+        prefill_data = estimate_service.get_prefill_data(repo, as_of="now", db_path=db_target)
         return jsonify(prefill_data), 200
+    except LookupError as lk_err:
+        return jsonify({"error": "snapshot_tidak_tersedia", "pesan": str(lk_err)}), 404
     except ValueError as err:
-        return jsonify({"error": str(err)}), 400
+        return jsonify({"error": "invalid_repo", "pesan": str(err)}), 400
 
 
 @main_bp.route("/api/estimate", methods=["POST"])
@@ -142,6 +151,7 @@ def dashboard_page() -> str:
     db_target = current_app.config.get("DATABASE_PATH")
     metrics_a = dashboard_service.get_regression_a_data(db_path=db_target)
     metrics_b = dashboard_service.get_regression_b_data()
+    duration_benchmark = dashboard_service.get_duration_benchmark(db_path=db_target)
     summary = dashboard_service.get_dashboard_summary(db_path=db_target)
     training_data = dashboard_service.get_training_data_summary(db_path=db_target)
     recent_alerts = dashboard_service.get_recent_alerts(limit=10, db_path=db_target)
@@ -150,6 +160,7 @@ def dashboard_page() -> str:
         "dashboard.html",
         metrics_a=metrics_a,
         metrics_b=metrics_b,
+        duration_benchmark=duration_benchmark,
         summary=summary,
         training_data=training_data,
         recent_alerts=recent_alerts,
@@ -174,6 +185,41 @@ def api_dashboard_regression_b() -> tuple[Response, int]:
     if not data:
         return jsonify({"status": "not_trained", "message": "Model B belum dilatih."}), 200
     return jsonify(data), 200
+
+
+@main_bp.route("/kesehatan")
+def health_page() -> str:
+    """Menampilkan halaman Kartu Kesehatan Repositori (daftar atau detail per repositori)."""
+    from app.services import health_service
+    db_target = current_app.config.get("DATABASE_PATH")
+    repo_param = request.args.get("repo", "").strip()
+
+    if repo_param:
+        detail = health_service.get_repo_health_detail(repo_param, db_path=db_target)
+        return render_template("health.html", mode="detail", repo_name=repo_param, detail=detail)
+
+    repos_health = health_service.get_all_repos_health(db_path=db_target)
+    return render_template("health.html", mode="list", repos_health=repos_health)
+
+
+@main_bp.route("/api/health")
+def api_health() -> tuple[Response, int]:
+    """Endpoint REST API kartu kesehatan repositori."""
+    from app.services import health_service
+    repo_param = request.args.get("repo", "").strip()
+    if not repo_param:
+        return jsonify({"error": "invalid_repo", "pesan": "Parameter query 'repo' wajib disertakan."}), 400
+
+    from app.scraper.repo_metrics import validate_repo_name
+    if not validate_repo_name(repo_param):
+        return jsonify({"error": "invalid_repo", "pesan": "Nama repositori tidak valid."}), 400
+
+    db_target = current_app.config.get("DATABASE_PATH")
+    detail = health_service.get_repo_health_detail(repo_param, db_path=db_target)
+    if not detail:
+        return jsonify({"error": "repo_not_found", "pesan": f"Repositori '{repo_param}' tidak ditemukan."}), 404
+
+    return jsonify(detail), 200
 
 
 # Impor endpoint API dashboard tambahan agar terdaftar di main_bp

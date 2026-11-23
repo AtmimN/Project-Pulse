@@ -4,7 +4,6 @@
 document.addEventListener("DOMContentLoaded", function () {
     initSentimentBarChart();
     initSentimentTrendChart();
-    initModelAScatterChart();
     initModelBScatterChart();
 });
 
@@ -99,57 +98,6 @@ function initSentimentTrendChart() {
         .catch(() => showEmptyChartMessage("container-sentiment-trend", "Gagal memuat grafik tren bulanan."));
 }
 
-function initModelAScatterChart() {
-    const ctx = document.getElementById("chart-model-a");
-    if (!ctx) return;
-
-    fetch("/api/dashboard/regression-a")
-        .then(res => res.json())
-        .then(resData => {
-            const preds = resData && (resData.pairs || resData.predictions);
-            if (!resData || resData.status === "not_trained" || !preds || preds.length === 0) {
-                showEmptyChartMessage("container-model-a", "Model A belum dilatih atau data prediksi belum tersedia.");
-                return;
-            }
-            const points = preds.map(p => ({ x: p.actual, y: p.predicted }));
-            const maxVal = Math.max(...preds.map(p => Math.max(p.actual, p.predicted)), 10);
-
-            new Chart(ctx, {
-                type: "scatter",
-                data: {
-                    datasets: [
-                        {
-                            label: "Sampel Aktual vs Prediksi",
-                            data: points,
-                            backgroundColor: "#2563eb"
-                        },
-                        {
-                            label: "Garis Ideal (y = x)",
-                            data: [{ x: 0, y: 0 }, { x: maxVal, y: maxVal }],
-                            type: "line",
-                            borderColor: "#94a3b8",
-                            borderDash: [5, 5],
-                            pointRadius: 0,
-                            fill: false
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: { title: { display: true, text: "Durasi Aktual (bulan)" } },
-                        y: { title: { display: true, text: "Durasi Prediksi (bulan)" } }
-                    },
-                    plugins: {
-                        title: { display: true, text: "Scatter Model A: Aktual vs Prediksi Durasi" }
-                    }
-                }
-            });
-        })
-        .catch(() => showEmptyChartMessage("container-model-a", "Gagal memuat grafik Model A."));
-}
-
 function initModelBScatterChart() {
     const ctx = document.getElementById("chart-model-b");
     if (!ctx) return;
@@ -157,12 +105,21 @@ function initModelBScatterChart() {
     fetch("/api/dashboard/regression-b")
         .then(res => res.json())
         .then(resData => {
-            const preds = resData && (resData.pairs || resData.predictions);
-            if (!resData || resData.status === "not_trained" || !preds || preds.length === 0) {
-                showEmptyChartMessage("container-model-b", "Model B belum dilatih atau dataset NASA93 belum tersedia.");
+            if (!resData || resData.status === "not_trained") {
+                showEmptyChartMessage("container-model-b", "Model B belum dilatih atau berkas model belum tersedia.");
                 return;
             }
-            const points = preds.map(p => ({ x: p.actual, y: p.predicted }));
+            if (!resData.pairs) {
+                showEmptyChartMessage("container-model-b", "Metrik evaluasi tidak memuat data pasangan prediksi (pairs).");
+                return;
+            }
+            if (resData.pairs.length === 0) {
+                showEmptyChartMessage("container-model-b", "Jumlah sampel pasangan prediksi tidak mencukupi untuk ditampilkan.");
+                return;
+            }
+            // Pasangan predictions aktual vs prediksi untuk scatter plot
+            const predictions = resData.pairs;
+            const points = predictions.map(p => ({ x: p.actual, y: p.predicted }));
 
             new Chart(ctx, {
                 type: "scatter",

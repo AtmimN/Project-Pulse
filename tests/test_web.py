@@ -31,16 +31,16 @@ def test_chat_page(client: FlaskClient) -> None:
 
 
 def test_estimate_page(client: FlaskClient) -> None:
-    """Memastikan halaman estimasi proyek termuat dengan teks peringatan dan penjelasan M2-rev."""
+    """Memastikan halaman estimasi proyek termuat dengan Model B dan benchmark M6-rev."""
     response = client.get("/estimasi")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "Kalkulator Estimasi Proyek Berdampingan" in html
     assert "estimateForm" in html
-    assert "Model A — pola historis repositori GitHub" in html
-    assert "pendekatan kontributor kumulatif" in html
-    assert "Model A mempelajari korelasi historis, bukan sebab-akibat" in html
-    assert "Mengapa Model A dan Model B bisa berlawanan arah?" in html
+    assert "Model B — NASA93 COCOMO" in html
+    assert "Konteks dari Data Historis GitHub" in html
+    assert "Benchmark Durasi Rilis Stabil Pertama" in html
+    assert "Analisis Beban Kerja" in html
+    assert "Model A — pola historis repositori GitHub" not in html
 
 
 def test_dashboard_and_api_endpoints(client: FlaskClient) -> None:

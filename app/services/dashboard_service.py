@@ -52,6 +52,21 @@ def get_regression_a_data(db_path: str | Path | None = None) -> dict[str, Any] |
     return metrics
 
 
+def get_duration_benchmark(db_path: str | Path | None = None) -> dict[str, Any]:
+    """Mengambil metrik benchmark durasi dari berkas JSON atau basis data."""
+    from app.estimator.benchmark import calculate_duration_benchmark, load_duration_benchmark
+    bench = load_duration_benchmark()
+    if bench and bench.get("n", 0) > 0:
+        return bench
+    try:
+        with connection.transaction(db_path) as conn:
+            rows = training_rows_repo.list_training_rows(conn, included_only=True)
+            durs = [float(r["duration_months"]) for r in rows if r.get("duration_months") is not None]
+            return calculate_duration_benchmark(durs)
+    except Exception:
+        return calculate_duration_benchmark([])
+
+
 def get_regression_b_data() -> dict[str, Any] | None:
     """Mengambil metrik dan pasangan aktual-prediksi Model B NASA93."""
     if not METRICS_B_PATH.exists():

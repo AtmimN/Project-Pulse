@@ -1,26 +1,36 @@
 comment_id,text,label
-36,"This is the most useful translation PR we have had in a while, and I want to be straight with you about what happened to it.
+31,"Thanks for building this, and sorry for the slow reply.
 
-We merged a bulk pass on September 8th that filled the missing keys in every locale, so the new strings in your PR now collide with ours. That part is redundant through no fault of yours, your PR was open first.
+PLANKA already remembers which view a board was last put into, so this overlaps with what is there. We keep it in `sessionStorage` rather than in the database, and that difference is deliberate: with two windows open on the same board, one as a grid and one as a list, a setting stored per user makes each window change under the other's hands. `sessionStorage` keeps them independent. The stored choice also carries the context it was picked in, so a view chosen in the archive does not follow the board when you open it normally.
 
-The other 44 changes are not redundant at all, and we have taken them. You caught things nobody had looked at in years: `Ta bort from tavla` with the English word still in it, `serverConnectionFailed` left completely untranslated, ""bräden"" for boards when the rest of the file says ""tavlor"", ""E-mail"" instead of ""E-postadress"", and the date format block still carrying the English ""at"". Those are real bugs, and the format block in particular is something our own tooling cannot detect.
+There is a second reason the column would be a problem regardless. A column that exists in Community and not in Pro breaks the upgrade path between the two, so every new column here costs work on the other side.
 
-Your corrections to the existing strings are in, along with the login and markdown editor ones, and we kept our versions of the new keys so the file ends up consistent. It is on master now.
-
-If you want to go through the new strings we landed and fix anything that reads badly in Swedish, please do. You clearly know this file better than we do.
+Closing this, but the instinct was right and the feature is there.
 ",
-76,I see this has now been fixed on `master` in `ad532605` and #1779 has been closed. I'm closing this PR as superseded. Thanks!,
-71,@dependabot rebase,
-29,"Merged, thank you. This is a real gap closed, and wrapping the existing label keys instead of inventing new text for every button was the right call.
+11,"That's the auto-logout on inactivity, added in 2.2.0. Sessions end after a period without activity, with a warning shown before the sign-out. You can adjust the timeout or disable it in your user settings.
 
-Three things we did on top rather than sending the PR back to you.
+That also explains the pattern you describe: a session survives overnight if a tab stays active, and ends after a few minutes if it doesn't.
 
-The tooltip now stays hidden on touch devices. With hover and focus as triggers, tapping a button gives it focus and the tooltip appears over the interface, which is not what anyone wants on a phone.
+Closing as expected behavior — feel free to reopen if it still happens with the timeout disabled.",
+33,"Thanks for this, and for the care that went into it. I am declining it, but I want to give you the actual reasons rather than a one liner.
 
-We replaced the `switchToView` key. ""Switch to {{view}} view"" with a view name interpolated into it needed `t('common.' + view).toLowerCase()` at the call site, and lowercasing an already translated string goes wrong in German, where nouns are capitalised, and in Turkish, where it turns I into ı. There are now five complete strings, one per view, and no lowercasing.
+The blocker is what happens on an existing instance. The migration leaves `due_date_expiration_notified_at` NULL on every row, so on the first sweep after upgrading, every card in the entire history with a past due date qualifies at once. On a server that has been running for a year that is hundreds of webhook deliveries in one go, fired sequentially with no limit. A backfill in the migration would fix that, setting the column for anything already overdue so only future expirations fire.
 
-And we filled the new keys into all 35 locales rather than just en-US and ru-RU, so the release does not ship a partly translated tooltip layer.
+Two other things I found while reading it. The query filters on `isDueCompleted: { '!=': true }`, and that column is nullable with no default, so newly created cards have NULL there and `NULL != true` is not true in Postgres. The event would never fire for any card created after the upgrade. And there is no index on `due_date` or on the new column, so the watcher does a full scan of the card table every 60 seconds by default.
 
-None of that is a criticism of the PR. They were just faster for us to do than to describe.
+Beyond the bugs, we would rather not put a column on `card` for this. It is the busiest table we have, and a per card flag means the event cannot fire again if someone moves a due date into the future. A watermark holding the last swept timestamp would give the same guarantee without touching `card` at all.
+
+If you want to take another run at it along those lines, I will review it properly and faster than this time.
 ",
-82,"2.3.0 adds `@name` mentions in card descriptions (f23ce6e0, 2413ddd1), next to the existing comment mentions, plus comment replies.",
+10,"PLANKA uses MAJOR.MINOR.PATCH as a version format. We do not follow the SemVer spec and never have. Features being added and features being removed are both a minor bump here. PLANKA Pro is going from 2.4.4 to 2.5.0 with 150 additions, for the same reason. Nothing about 2.2.0 is a departure from how we have always versioned.
+
+On upgrade documentation: the v2 guide exists because v1 to v2 required manual steps. 2.1 to 2.2 does not. Migrations run on boot, and the two things that do require action are in the release notes under ""Breaking changes — read before updating"": create a local admin user before updating if your only admin is SSO-based, and set passwords for the affected users afterwards to reactivate them. Node 24 for source installations is listed there too.
+
+https://github.com/plankanban/planka/releases/tag/v2.2.0
+
+The OIDC removal and the license behind it were discussed in #1754. That discussion is closed.",
+9,"We don't follow the SemVer spec and never have. MAJOR.MINOR.PATCH is a number format here, not a contract. Features coming in and features going out are both a minor bump, consistently since day one. We're cutting a release in PLANKA Pro right now: 150 additions, 2.4.4 to 2.5.0.
+
+So there is nothing to withdraw. 2.2.0 and 2.2.1 stay.
+
+The ""Open Source"" wording in the nav divider was an oversight and will be fixed.",

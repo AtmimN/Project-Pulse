@@ -1,4 +1,4 @@
-"""Layanan logika bisnis kalkulasi estimasi dua model berdampingan."""
+"""Layanan logika bisnis kalkulasi estimasi Model B (NASA93) dan konteks GitHub."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,11 +7,10 @@ import joblib
 
 from app import config
 from app.db import connection, estimations_repo, repos_repo, snapshots_repo, training_rows_repo
-from app.estimator.adjustments import average_member_levels, calculate_adjustment_factor
-from app.estimator.comparison import compare_models
-from app.estimator.model_a import MODEL_A_PATH, predict_model_a
+from app.estimator.adjustments import average_member_levels
+from app.estimator.benchmark import calculate_duration_benchmark, load_duration_benchmark
 from app.estimator.model_b import MODEL_B_PATH, predict_model_b
-from app.estimator.nasa93 import ORDINAL_MAP, load_cocomo_multipliers
+from app.estimator.nasa93 import ORDINAL_MAP
 from app.estimator.workload import analyze_workload
 
 
@@ -20,22 +19,30 @@ def get_prefill_data(
     as_of: str = "now",
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Mengambil metrik repositori pantau dari repo_snapshots untuk mengisi otomatis form."""
+    """Mengambil metrik ukuran dan tugas dari snapshot 'now' repositori pantau."""
+    from app.scraper.repo_metrics import validate_repo_name
+    if not validate_repo_name(repo_name):
+        raise ValueError(f"Nama repositori '{repo_name}' tidak valid.")
+    if as_of != "now":
+        raise ValueError("Hanya snapshot 'now' yang didukung untuk prefill.")
+
     with connection.transaction(db_path) as conn:
         repo = repos_repo.get_by_full_name(conn, repo_name)
         if not repo:
-            raise ValueError(f"Repositori '{repo_name}' tidak ditemukan.")
-        snapshot = snapshots_repo.get_snapshot(conn, repo["id"], as_of)
+            raise LookupError(f"Repositori '{repo_name}' tidak ditemukan di database.")
+        snapshot = snapshots_repo.get_snapshot(conn, repo["id"], "now")
         if not snapshot:
-            raise ValueError(f"Data snapshot '{as_of}' belum tersedia untuk {repo_name}.")
+            raise LookupError(f"Data snapshot 'now' belum tersedia untuk {repo_name}.")
 
     return {
         "repo": repo["full_name"],
-        "as_of": as_of,
-        "n_members": snapshot.get("n_contributors"),
+        "as_of": "now",
         "n_tasks": snapshot.get("n_work_items"),
         "kloc": snapshot.get("kloc"),
-        "duration_actual": snapshot.get("duration_months"),
+        "alasan_anggota": (
+            "Jumlah kontributor kumulatif repositori bukan ukuran tim aktif; "
+            "memakainya sebagai pembagi usaha menghasilkan durasi yang tidak masuk akal."
+        ),
     }
 
 
@@ -53,7 +60,7 @@ def calculate_estimation(
     payload: dict[str, Any],
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Menghitung estimasi proyek pada Model A dan Model B secara berdampingan."""
+    """Menghitung estimasi proyek pada Model B (NASA93) dan konteks data GitHub."""
     members_list = payload.get("members")
     if members_list and isinstance(members_list, list):
         avg_info = average_member_levels(members_list)
@@ -71,31 +78,20 @@ def calculate_estimation(
     kloc = float(payload.get("kloc", 5.0))
     _validate_input_numbers(n_members, n_tasks, kloc)
 
-    # 1. Model A
-    model_a_res = _calc_model_a(n_members, n_tasks, kloc, acap_val, pcap_val, aexp_val)
-
-    # 2. Model B
+    # 1. Model B
     acap_ord = float(ORDINAL_MAP.get(str(acap_val).lower(), acap_val if isinstance(acap_val, (int, float)) else 3))
     pcap_ord = float(ORDINAL_MAP.get(str(pcap_val).lower(), pcap_val if isinstance(pcap_val, (int, float)) else 3))
     aexp_ord = float(ORDINAL_MAP.get(str(aexp_val).lower(), aexp_val if isinstance(aexp_val, (int, float)) else 3))
     model_b_res = _calc_model_b(kloc, acap_ord, pcap_ord, aexp_ord, n_members)
 
-    # 3. Analisis Beban Kerja
+    # 2. Konteks Data GitHub (Analisis Beban Kerja & Benchmark Durasi)
     workload_res = _calc_workload(n_members, n_tasks, db_path)
-
-    # 4. Penanda Selisih Antar-Model
-    comp_res = None
-    if model_a_res.get("status") == "ready" and model_b_res.get("status") == "ready":
-        comp_res = compare_models(
-            model_a_res["adjusted_duration"],
-            model_b_res["indicative_duration"],
-        )
+    bench_res = _calc_duration_benchmark(db_path)
 
     response = {
-        "model_a": model_a_res,
         "model_b": model_b_res,
         "workload": workload_res,
-        "comparison": comp_res,
+        "benchmark_duration": bench_res,
         "input_summary": {
             "n_members": n_members,
             "n_tasks": n_tasks,
@@ -113,60 +109,18 @@ def calculate_estimation(
     return response
 
 
-def _calc_model_a(
-    n_members: int,
-    n_tasks: int,
-    kloc: float,
-    acap: Any,
-    pcap: Any,
-    aexp: Any,
-) -> dict[str, Any]:
-    """Kalkulasi internal untuk Model A."""
-    if not MODEL_A_PATH.exists():
-        return {
-            "status": "untrained",
-            "message": "Model A belum dilatih. Jalankan python -m app.cli train-models.",
-        }
-    bundle = joblib.load(MODEL_A_PATH)
-    base_dur, mae, warnings = predict_model_a(bundle, n_members, n_tasks, kloc)
-    multipliers = load_cocomo_multipliers()
-    adj = calculate_adjustment_factor(acap, pcap, aexp, multipliers)
-    adj_dur = max(0.1, round(base_dur * adj["factor"], 2))
-
-    metrics = bundle.get("metrics", {})
-    cv_mae = metrics.get("cv_mae", mae)
-    base_cv = metrics.get("baseline_mae_cv")
-    imp_pct = metrics.get("improvement_pct", 0.0)
-    cv_r2 = metrics.get("cv_r2")
-    holdout_reliable = metrics.get("holdout_reliable", True)
-    n_test = metrics.get("n_test", 0)
-
-    if base_cv is not None:
-        if imp_pct > 0:
-            quality_text = f"MAE {cv_mae} bulan; tebak median {base_cv} bulan (lebih baik {int(round(imp_pct))}%)"
-        else:
-            quality_text = f"MAE {cv_mae} bulan; tidak lebih baik dari tebakan median ({base_cv} bulan)"
-    else:
-        quality_text = f"MAE {cv_mae} bulan"
-
-    return {
-        "status": "ready",
-        "base_duration": base_dur,
-        "adjustment_factor": adj["factor"],
-        "adjusted_duration": adj_dur,
-        "mae": cv_mae,
-        "range": [max(0.1, round(adj_dur - cv_mae, 2)), round(adj_dur + cv_mae, 2)],
-        "cv_mae": cv_mae,
-        "cv_r2": cv_r2,
-        "baseline_mae_cv": base_cv,
-        "improvement_pct": imp_pct,
-        "holdout_reliable": holdout_reliable,
-        "n_test": n_test,
-        "quality_text": quality_text,
-        "holdout_label": f"n = {n_test}" if holdout_reliable else f"tidak andal (n = {n_test})",
-        "diagnostics": metrics.get("diagnostics"),
-        "warnings": warnings,
-    }
+def _calc_duration_benchmark(db_path: str | Path | None) -> dict[str, Any]:
+    """Mengambil benchmark durasi dari berkas benchmark_duration.json atau basis data."""
+    bench = load_duration_benchmark()
+    if bench and bench.get("n", 0) > 0:
+        return bench
+    try:
+        with connection.transaction(db_path) as conn:
+            rows = training_rows_repo.list_training_rows(conn, included_only=True)
+            durs = [float(r["duration_months"]) for r in rows if r.get("duration_months") is not None]
+            return calculate_duration_benchmark(durs)
+    except Exception:
+        return calculate_duration_benchmark([])
 
 
 def _calc_model_b(

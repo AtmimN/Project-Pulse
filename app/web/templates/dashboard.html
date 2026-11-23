@@ -16,9 +16,14 @@
                 Evaluasi performa model regresi estimasi, diagnostik korelasi historis, grafik sentimen, dan pemantauan sistem.
             </p>
         </div>
-        <span class="badge" style="background-color: var(--primary-color); color: white; padding: 0.4rem 0.8rem; border-radius: 9999px; font-size: 0.8rem;">
-            Milestone M6
-        </span>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <a href="{{ url_for('main.health_page') }}" class="btn btn-outline" style="background-color: rgba(255, 255, 255, 0.15); color: #ffffff; border-color: rgba(255, 255, 255, 0.4); text-decoration: none;">
+                Kartu Kesehatan Repositori &rarr;
+            </a>
+            <span class="badge" style="background-color: var(--primary-color); color: white; padding: 0.4rem 0.8rem; border-radius: 9999px; font-size: 0.8rem;">
+                Milestone M6-rev
+            </span>
+        </div>
     </div>
 </section>
 
@@ -75,121 +80,140 @@
         </div>
     </div>
 
-    <!-- Panel Model A -->
+    <!-- Panel Temuan Evaluasi Durasi GitHub -->
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1rem;">
             <div>
-                <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">Model A — Pola Historis Repositori GitHub</h2>
+                <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">Temuan Evaluasi Durasi GitHub</h2>
                 <div style="font-size: 0.85rem; color: var(--text-muted);">
-                    Linear Regression (varian {{ metrics_a.variant if metrics_a else '-' }}) memprediksi durasi kalender (bulan).
+                    Evaluasi regresi durasi data repositori GitHub (eks-Model A). Dipertahankan sebagai temuan analisis; tidak dipakai sebagai prediktor estimasi.
                 </div>
             </div>
-            <span class="badge">Model A</span>
+            <span class="badge badge-warning">Temuan Evaluasi</span>
         </div>
 
         {% if metrics_a %}
-            {% if metrics_a.warning_insufficient %}
-            <div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 0.75rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem;">
-                <strong>Peringatan:</strong> Jumlah data latih ({{ metrics_a.n_training_rows }}) kurang dari batas minimal (30 baris). Hasil model belum sepenuhnya andal.
-            </div>
-            {% endif %}
-
-            <!-- Kartu Metrik Utama -->
+            <!-- Ringkasan Validasi Silang vs Tebak-Median -->
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Validasi Silang (Utama)</div>
-                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--primary-color);">MAE {{ metrics_a.cv_mae }} bulan</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Validasi Silang vs Median</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: {% if metrics_a.improvement_pct > 0 %}#16a34a{% else %}#dc2626{% endif %};">
+                        MAE {{ metrics_a.cv_mae }} bln
+                    </div>
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-                        {% if metrics_a.improvement_pct > 0 %}
-                            Tebak median: {{ metrics_a.baseline_mae_cv }} bln (lebih baik {{ metrics_a.improvement_pct }}%)
-                        {% else %}
-                            Tidak lebih baik dari tebakan median ({{ metrics_a.baseline_mae_cv }} bln)
-                        {% endif %}
+                        Tebak median: {{ metrics_a.baseline_mae_cv }} bln (improvement: {{ metrics_a.improvement_pct }}%)
                     </div>
                 </div>
 
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">R&sup2; Validasi Silang (Out-of-Fold)</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">R&sup2; Validasi Silang Out-of-Fold</div>
                     <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">{{ metrics_a.cv_r2 }}</div>
                     <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Rata-rata 20x pengulangan 5-fold</div>
                 </div>
 
                 <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Data Uji (Hold-out 20%)</div>
-                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">MAE {{ metrics_a.test_mae }} bulan</div>
-                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-                        {% if not metrics_a.holdout_reliable %}
-                            <span style="color: #d97706; font-weight: 600;">Pelengkap: tidak andal (n = {{ metrics_a.n_test }})</span>
-                        {% else %}
-                            R&sup2;: {{ metrics_a.test_r2 }} (n = {{ metrics_a.n_test }})
-                        {% endif %}
-                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.25rem;">Jumlah Data Latih</div>
+                    <div style="font-size: 1.35rem; font-weight: 700; color: var(--text-color);">{{ metrics_a.n_training_rows }} baris</div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">Repositori open source terverifikasi</div>
                 </div>
             </div>
 
+            <!-- Pesan Temuan Evaluasi Utama -->
+            <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #d97706; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1.25rem; color: #92400e;">
+                <strong>Kesimpulan Temuan:</strong>
+                {% if metrics_a.improvement_pct <= 0 %}
+                    model durasi dari data GitHub tidak lebih baik dari tebakan median.
+                {% endif %}
+                {{ metrics_a.diagnostics.finding if metrics_a.diagnostics else '' }}
+                <div style="font-size: 0.8rem; margin-top: 0.35rem; color: var(--text-muted);">
+                    <em>Catatan: Data durasi GitHub tidak memiliki kemampuan prediksi yang memadai dan tidak dipakai sebagai prediktor estimasi proyek.</em>
+                </div>
+            </div>
+
+            <!-- Gambaran Tipikal Durasi Data Latih jika improvement_pct <= 0 -->
             {% if metrics_a.improvement_pct <= 0 and metrics_a.typical_duration %}
-            <div style="background-color: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #d97706; padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1.5rem; color: #92400e;">
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1.25rem;">
                 <strong>Gambaran Tipikal Durasi Data Latih:</strong>
-                Median durasi <strong>{{ metrics_a.typical_duration.median }} bulan</strong>,
-                rentang kuartil (Q1 &ndash; Q3) <strong>{{ metrics_a.typical_duration.q25 }} &ndash; {{ metrics_a.typical_duration.q75 }} bulan</strong> (IQR: {{ metrics_a.typical_duration.iqr }} bulan).
-                Karena model tidak lebih baik dari tebakan median, rentang tipikal ini dijadikan gambaran dasar.
+                Median: <strong>{{ metrics_a.typical_duration.median }} bulan</strong>,
+                Rentang Kuartil (Q1 &ndash; Q3): <strong>{{ metrics_a.typical_duration.q25 }}</strong> &ndash; <strong>{{ metrics_a.typical_duration.q75 }}</strong> bulan
+                (IQR: {{ metrics_a.typical_duration.iqr }} bulan).
             </div>
             {% endif %}
 
-            <!-- Scatter Plot Model A -->
-            <div style="margin-bottom: 1.5rem;">
-                <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Grafik Scatter: Durasi Aktual vs Prediksi</h3>
-                <div id="container-model-a" style="position: relative; height: 280px;">
-                    <canvas id="chart-model-a"></canvas>
-                </div>
+            <!-- Tabel Diagnostik -->
+            {% if metrics_a.diagnostics %}
+            <div style="overflow-x: auto; margin-bottom: 1rem;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                    <thead>
+                        <tr style="border-bottom: 2px solid var(--border-color); background-color: #f8fafc;">
+                            <th style="padding: 0.5rem;">Fitur</th>
+                            <th style="padding: 0.5rem;">Korelasi Spearman (&rho;)</th>
+                            <th style="padding: 0.5rem;">Kestabilan Tanda (&gt;0)</th>
+                            <th style="padding: 0.5rem;">Koefisien Terstandar (z-score)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 0.5rem;"><strong>n_contributors</strong></td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_n_contributors }}</td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.n_contributors }}%</td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.n_contributors }}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 0.5rem;"><strong>n_work_items</strong></td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_n_work_items }}</td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.n_work_items }}%</td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.n_work_items }}</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--border-color);">
+                            <td style="padding: 0.5rem;"><strong>kloc</strong></td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_kloc }}</td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.kloc }}%</td>
+                            <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.kloc }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-
-            <!-- Tabel Diagnostik Model A -->
-            <div style="margin-top: 1rem;">
-                <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Tabel Diagnostik Model A</h3>
-                {% if metrics_a.diagnostics %}
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid var(--border-color); background-color: #f8fafc;">
-                                <th style="padding: 0.5rem;">Fitur</th>
-                                <th style="padding: 0.5rem;">Korelasi Spearman (&rho;)</th>
-                                <th style="padding: 0.5rem;">Kestabilan Tanda (&gt;0)</th>
-                                <th style="padding: 0.5rem;">Koefisien Terstandar (z-score)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr style="border-bottom: 1px solid var(--border-color);">
-                                <td style="padding: 0.5rem;"><strong>n_contributors</strong></td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_n_contributors }}</td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.n_contributors }}%</td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.n_contributors }}</td>
-                            </tr>
-                            <tr style="border-bottom: 1px solid var(--border-color);">
-                                <td style="padding: 0.5rem;"><strong>n_work_items</strong></td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_n_work_items }}</td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.n_work_items }}%</td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.n_work_items }}</td>
-                            </tr>
-                            <tr style="border-bottom: 1px solid var(--border-color);">
-                                <td style="padding: 0.5rem;"><strong>kloc</strong></td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.spearman_correlation.duration_vs_kloc }}</td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.sign_stability.kloc }}%</td>
-                                <td style="padding: 0.5rem;">{{ metrics_a.diagnostics.standardized_coefficients.kloc }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div style="background-color: #f1f5f9; padding: 0.75rem; border-radius: 6px; font-size: 0.85rem; margin-top: 0.75rem;">
-                    <strong>Temuan Diagnostik:</strong> {{ metrics_a.diagnostics.finding }}
-                </div>
-                {% endif %}
-            </div>
+            {% endif %}
         {% else %}
-            <div style="padding: 2.5rem; text-align: center; color: var(--text-muted);">
-                <p style="font-size: 1rem; margin-bottom: 0.5rem;">Model A belum dilatih.</p>
-                <p style="font-size: 0.85rem;">Jalankan perintah <code>python -m app.cli train-models</code> untuk melatih model dan menghasilkan metrik evaluasi.</p>
+            <div style="padding: 1.5rem; text-align: center; color: var(--text-muted);">
+                <p>Evaluasi data durasi GitHub belum tersedia.</p>
             </div>
+        {% endif %}
+    </div>
+
+    <!-- Panel Benchmark Durasi -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+            <div>
+                <h2 style="font-size: 1.25rem; margin-bottom: 0.25rem;">Benchmark Durasi Rilis Stabil Pertama (GitHub)</h2>
+                <div style="font-size: 0.85rem; color: var(--text-muted);">
+                    Distribusi empiris durasi dari commit pertama sampai rilis stabil pertama pada repositori data latih yang disertakan.
+                </div>
+            </div>
+            <span class="badge">Benchmark</span>
+        </div>
+
+        {% if duration_benchmark and duration_benchmark.n > 0 %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Median Durasi</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-color);">{{ duration_benchmark.median }} bulan</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Nilai tengah distribusi</div>
+            </div>
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Rentang Kuartil (Q1 &ndash; Q3)</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-color);">{{ duration_benchmark.q1 }} &ndash; {{ duration_benchmark.q3 }} bln</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">50% repositori berada di rentang ini</div>
+            </div>
+            <div style="background-color: #f8fafc; border: 1px solid var(--border-color); padding: 1rem; border-radius: 8px;">
+                <div style="font-size: 0.8rem; color: var(--text-muted);">Rentang Minimum &ndash; Maksimum</div>
+                <div style="font-size: 1.5rem; font-weight: 700; color: var(--text-color);">{{ duration_benchmark.min }} &ndash; {{ duration_benchmark.max }} bln</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">Berdasarkan {{ duration_benchmark.n }} repositori</div>
+            </div>
+        </div>
+        {% else %}
+        <p style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0;">Data benchmark durasi belum tersedia.</p>
         {% endif %}
     </div>
 
