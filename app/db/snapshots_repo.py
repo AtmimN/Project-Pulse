@@ -24,29 +24,16 @@ def save_snapshot(
         "release_tag, release_date, duration_months, snapshot_at) "
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) "
         "ON CONFLICT(repo_id, as_of) DO UPDATE SET "
-        "n_contributors = excluded.n_contributors, "
-        "n_work_items = excluded.n_work_items, "
-        "kloc = excluded.kloc, "
-        "first_commit_date = excluded.first_commit_date, "
-        "release_tag = excluded.release_tag, "
-        "release_date = excluded.release_date, "
-        "duration_months = excluded.duration_months, "
-        "snapshot_at = CURRENT_TIMESTAMP"
+        "n_contributors = excluded.n_contributors, n_work_items = excluded.n_work_items, "
+        "kloc = excluded.kloc, first_commit_date = excluded.first_commit_date, "
+        "release_tag = excluded.release_tag, release_date = excluded.release_date, "
+        "duration_months = excluded.duration_months, snapshot_at = CURRENT_TIMESTAMP"
     )
-    conn.execute(
-        sql,
-        (
-            repo_id,
-            as_of,
-            n_contributors,
-            n_work_items,
-            kloc,
-            first_commit_date,
-            release_tag,
-            release_date,
-            duration_months,
-        ),
+    params = (
+        repo_id, as_of, n_contributors, n_work_items, kloc,
+        first_commit_date, release_tag, release_date, duration_months,
     )
+    conn.execute(sql, params)
 
 
 def get_snapshot(conn: sqlite3.Connection, repo_id: int, as_of: str) -> dict[str, Any] | None:

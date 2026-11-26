@@ -72,37 +72,43 @@ def get_repo_health_detail(
         snap_stable = snapshots_repo.get_snapshot(conn, repo_id, "first_stable")
         dur_arr, work_arr = _get_training_distributions(conn)
 
-        # 1. Evaluasi Kecepatan
         speed_dim, speed_info = _eval_repo_speed(snap_now, snap_stable, dur_arr)
-
-        # 2. Evaluasi Beban Kerja
         work_dim, work_info = _eval_repo_workload(snap_now, work_arr)
-
-        # 3. Evaluasi Suasana (Sentimen & Alert)
         mood_dim, mood_info = _eval_repo_mood(conn, repo_id)
 
     dims = [speed_dim, work_dim, mood_dim]
     overall_status, overall_reason = evaluate_overall(dims)
 
     return {
-        "repo": repo["full_name"],
-        "repo_id": repo_id,
-        "overall_status": overall_status,
-        "overall_reason": overall_reason,
-        "has_snapshot": bool(snap_now),
-        "speed": speed_info,
-        "workload": work_info,
-        "mood": mood_info,
+        "repo": repo["full_name"], "repo_id": repo_id,
+        "overall_status": overall_status, "overall_reason": overall_reason,
+        "has_snapshot": bool(snap_now), "speed": speed_info,
+        "workload": work_info, "mood": mood_info,
         "dimensions": [
-            {
-                "name": d.name,
-                "status": d.status,
-                "reason": d.reason,
-                "display": d.value_display,
-            }
+            {"name": d.name, "status": d.status, "reason": d.reason, "display": d.value_display}
             for d in dims
         ],
     }
+
+
+def _eval_elapsed_speed(snap_now: dict[str, Any], dur_arr: np.ndarray) -> tuple[HealthDimension, dict[str, Any]] | None:
+    """Mengevaluasi kecepatan berdasarkan lama commit pertama jika snapshot stabil belum ada."""
+    if not snap_now.get("first_commit_date"):
+        return None
+    try:
+        fc_str = str(snap_now["first_commit_date"])[:10]
+        fc_dt = datetime.fromisoformat(fc_str).date()
+        elapsed_days = max(1, (datetime.now().date() - fc_dt).days)
+        elapsed_m = round(elapsed_days / 30.4375, 1)
+        pct = float(np.mean(dur_arr <= elapsed_m) * 100.0)
+        dim = evaluate_speed(pct, is_elapsed=True, months_val=elapsed_m)
+        return dim, {
+            "status": dim.status, "reason": dim.reason, "display": dim.value_display,
+            "is_elapsed": True, "months": elapsed_m, "percentile": round(pct, 1),
+            "text": f"Belum ada rilis stabil; sudah berjalan {elapsed_m:.1f} bulan (persentil {pct:.0f}%).",
+        }
+    except (ValueError, TypeError):
+        return None
 
 
 def _eval_repo_speed(
@@ -115,47 +121,21 @@ def _eval_repo_speed(
         dur_val = float(snap_stable["duration_months"])
         pct = float(np.mean(dur_arr <= dur_val) * 100.0)
         dim = evaluate_speed(pct, is_elapsed=False, months_val=dur_val)
-        info = {
-            "status": dim.status,
-            "reason": dim.reason,
-            "display": dim.value_display,
-            "is_elapsed": False,
-            "months": dur_val,
-            "percentile": round(pct, 1),
+        return dim, {
+            "status": dim.status, "reason": dim.reason, "display": dim.value_display,
+            "is_elapsed": False, "months": dur_val, "percentile": round(pct, 1),
             "text": f"Rilis stabil pertama dicapai dalam {dur_val:.1f} bulan (persentil {pct:.0f}%).",
         }
-        return dim, info
 
-    if snap_now and snap_now.get("first_commit_date"):
-        try:
-            fc_str = str(snap_now["first_commit_date"])[:10]
-            fc_dt = datetime.fromisoformat(fc_str).date()
-            now_dt = datetime.now().date()
-            elapsed_days = max(1, (now_dt - fc_dt).days)
-            elapsed_m = round(elapsed_days / 30.4375, 1)
-            pct = float(np.mean(dur_arr <= elapsed_m) * 100.0)
-            dim = evaluate_speed(pct, is_elapsed=True, months_val=elapsed_m)
-            info = {
-                "status": dim.status,
-                "reason": dim.reason,
-                "display": dim.value_display,
-                "is_elapsed": True,
-                "months": elapsed_m,
-                "percentile": round(pct, 1),
-                "text": f"Belum ada rilis stabil; sudah berjalan {elapsed_m:.1f} bulan (persentil {pct:.0f}%).",
-            }
-            return dim, info
-        except Exception:
-            pass
+    if snap_now:
+        res = _eval_elapsed_speed(snap_now, dur_arr)
+        if res:
+            return res
 
     dim = evaluate_speed(None, False, None)
     return dim, {
-        "status": dim.status,
-        "reason": dim.reason,
-        "display": dim.value_display,
-        "is_elapsed": False,
-        "months": None,
-        "percentile": None,
+        "status": dim.status, "reason": dim.reason, "display": dim.value_display,
+        "is_elapsed": False, "months": None, "percentile": None,
         "text": "Data snapshot kecepatan belum tersedia.",
     }
 
@@ -195,13 +175,25 @@ def _eval_repo_workload(
     }
 
 
+def _fetch_repo_alerts_14d(conn: Any, repo_id: int, d14_str: str) -> tuple[int, bool, bool, dict[str, int]]:
+    """Mengambil riwayat alert 14 hari terakhir untuk satu repositori."""
+    q_al = "SELECT alert_type, strength FROM alerts WHERE repo_id = ? AND alert_date >= ?"
+    al_rows = conn.execute(q_al, (repo_id, d14_str)).fetchall()
+    has_strong = any(r["strength"] == "kuat" for r in al_rows)
+    has_med = any(r["strength"] == "sedang" for r in al_rows)
+    counts: dict[str, int] = {}
+    for r in al_rows:
+        t = r["alert_type"]
+        counts[t] = counts.get(t, 0) + 1
+    return len(al_rows), has_strong, has_med, counts
+
+
 def _eval_repo_mood(conn: Any, repo_id: int) -> tuple[HealthDimension, dict[str, Any]]:
     """Kalkulasi internal dimensi suasana (sentimen dan alert)."""
     today_dt = datetime.now().date()
     d30_str = (today_dt - timedelta(days=29)).strftime("%Y-%m-%d")
     d14_str = (today_dt - timedelta(days=13)).strftime("%Y-%m-%d")
 
-    # Sentimen 30 hari
     q_sent = (
         "SELECT SUM(n_comments) as tot, SUM(n_positive) as pos, SUM(n_negative) as neg "
         "FROM daily_stats WHERE repo_id = ? AND stat_date >= ?"
@@ -212,34 +204,16 @@ def _eval_repo_mood(conn: Any, repo_id: int) -> tuple[HealthDimension, dict[str,
     neg_c = int(r_sent["neg"] or 0) if r_sent else 0
     idx_30d = round((pos_c - neg_c) / float(tot_c), 2) if tot_c > 0 else None
 
-    # Alert 14 hari
-    q_al = "SELECT alert_type, strength FROM alerts WHERE repo_id = ? AND alert_date >= ?"
-    al_rows = conn.execute(q_al, (repo_id, d14_str)).fetchall()
-    has_strong = any(r["strength"] == "kuat" for r in al_rows)
-    has_med = any(r["strength"] == "sedang" for r in al_rows)
-
-    alert_counts: dict[str, int] = {}
-    for r in al_rows:
-        t = r["alert_type"]
-        alert_counts[t] = alert_counts.get(t, 0) + 1
-
+    al_count, has_strong, has_med, counts = _fetch_repo_alerts_14d(conn, repo_id, d14_str)
     dim = evaluate_mood(
-        idx_30d,
-        tot_c,
-        min_comments=config.MIN_COMMENTS_FOR_SUMMARY,
-        has_strong_alert_14d=has_strong,
-        has_medium_alert_14d=has_med,
+        idx_30d, tot_c, min_comments=config.MIN_COMMENTS_FOR_SUMMARY,
+        has_strong_alert_14d=has_strong, has_medium_alert_14d=has_med,
     )
 
     info = {
-        "status": dim.status,
-        "reason": dim.reason,
-        "display": dim.value_display,
-        "sentiment_index_30d": idx_30d,
-        "comments_count_30d": tot_c,
-        "alerts_14d_count": len(al_rows),
-        "has_strong_alert": has_strong,
-        "has_medium_alert": has_med,
-        "alert_breakdown": alert_counts,
+        "status": dim.status, "reason": dim.reason, "display": dim.value_display,
+        "sentiment_index_30d": idx_30d, "comments_count_30d": tot_c,
+        "alerts_14d_count": al_count, "has_strong_alert": has_strong,
+        "has_medium_alert": has_med, "alert_breakdown": counts,
     }
     return dim, info

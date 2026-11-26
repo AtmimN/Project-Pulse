@@ -47,6 +47,23 @@ class SklearnSentimentClassifier:
         return round(score, 4), pred_label
 
 
+def _fit_and_eval_models(
+    X_tr: list[str], y_tr: list[str], X_te: list[str], y_te: list[str]
+) -> tuple[Pipeline, float, float]:
+    """Melatih pipeline TF-IDF + LogisticRegression dan membandingkan Macro F1 dengan VADER."""
+    pipe = Pipeline([
+        ("tfidf", TfidfVectorizer(ngram_range=(1, 2), min_df=2, preprocessor=clean_text)),
+        ("clf", LogisticRegression(class_weight="balanced", random_state=42, max_iter=1000)),
+    ])
+    pipe.fit(X_tr, y_tr)
+    f1_clf = float(f1_score(y_te, pipe.predict(X_te), average="macro", zero_division=0))
+
+    vader = VaderSentimentAnalyzer()
+    y_pred_vader = [vader.analyze(t)[1] for t in X_te]
+    f1_vader = float(f1_score(y_te, y_pred_vader, average="macro", zero_division=0))
+    return pipe, f1_clf, f1_vader
+
+
 def train_and_evaluate_classifier(
     df_labels: pd.DataFrame,
     min_samples: int = 150,
@@ -60,24 +77,10 @@ def train_and_evaluate_classifier(
 
     X = df_labels["text"].fillna("").astype(str).tolist()
     y = df_labels["label"].astype(str).tolist()
-
     X_tr, X_te, y_tr, y_te = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
-
-    pipe = Pipeline([
-        ("tfidf", TfidfVectorizer(ngram_range=(1, 2), min_df=2, preprocessor=clean_text)),
-        ("clf", LogisticRegression(class_weight="balanced", random_state=42, max_iter=1000)),
-    ])
-    pipe.fit(X_tr, y_tr)
-
-    y_pred_clf = pipe.predict(X_te)
-    f1_clf = float(f1_score(y_te, y_pred_clf, average="macro", zero_division=0))
-
-    # Evaluasi VADER pada data uji yang sama
-    vader = VaderSentimentAnalyzer()
-    y_pred_vader = [vader.analyze(t)[1] for t in X_te]
-    f1_vader = float(f1_score(y_te, y_pred_vader, average="macro", zero_division=0))
+    pipe, f1_clf, f1_vader = _fit_and_eval_models(X_tr, y_tr, X_te, y_te)
 
     delta_f1 = f1_clf - f1_vader
     use_classifier = delta_f1 >= config.CLASSIFIER_F1_THRESHOLD
@@ -111,7 +114,8 @@ def get_active_sentiment_analyzer() -> Any:
             if info.get("method") == "classifier":
                 pipe = joblib.load(SENTIMENT_MODEL_PATH)
                 return SklearnSentimentClassifier(pipe)
-        except Exception:
-            pass
+        except (json.JSONDecodeError, OSError, KeyError) as err:
+            import logging
+            logging.getLogger(__name__).debug("Tidak dapat memuat model classifier: %s", err)
 
     return VaderSentimentAnalyzer()

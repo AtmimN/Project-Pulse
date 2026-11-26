@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from app import config
 from app.alerts.tiers import DEFAULT_TIERS
 from app.db import alerts_repo, connection, keywords_repo, subscribers_repo
+
+logger = logging.getLogger(__name__)
 
 
 def mask_chat_id(chat_id: int | str) -> str:
@@ -54,6 +57,21 @@ def get_subscribers_monitoring(db_path: str | Path | None = None) -> list[dict[s
     return result
 
 
+def _parse_detail_rows(rows: list[Any]) -> list[dict[str, Any]]:
+    """Membaca baris database dan mendekode string JSON detail."""
+    result = []
+    for r in rows:
+        d = dict(r)
+        raw = d.get("detail")
+        if isinstance(raw, str):
+            try:
+                d["detail"] = json.loads(raw)
+            except (json.JSONDecodeError, TypeError) as err:
+                logger.debug("Detail bukan format JSON valid: %s", err)
+        result.append(d)
+    return result
+
+
 def get_alerts_history(
     repo_filter: str | None = None,
     type_filter: str | None = None,
@@ -82,17 +100,7 @@ def get_alerts_history(
 
     with connection.transaction(db_path) as conn:
         rows = conn.execute(sql, tuple(params)).fetchall()
-
-    result = []
-    for r in rows:
-        d = dict(r)
-        if isinstance(d.get("detail"), str):
-            try:
-                d["detail"] = json.loads(d["detail"])
-            except Exception:
-                pass
-        result.append(d)
-    return result
+    return _parse_detail_rows(rows)
 
 
 def get_scheduler_logs(limit: int = 30, db_path: str | Path | None = None) -> list[dict[str, Any]]:
@@ -100,30 +108,27 @@ def get_scheduler_logs(limit: int = 30, db_path: str | Path | None = None) -> li
     with connection.transaction(db_path) as conn:
         sql = "SELECT * FROM job_runs ORDER BY id DESC LIMIT ?"
         rows = conn.execute(sql, (limit,)).fetchall()
+    return _parse_detail_rows(rows)
 
-    result = []
-    for r in rows:
-        d = dict(r)
-        if isinstance(d.get("detail"), str):
-            try:
-                d["detail"] = json.loads(d["detail"])
-            except Exception:
-                pass
-        result.append(d)
-    return result
+
+def _load_tier_settings(conn: Any) -> dict[str, float]:
+    """Membaca pengaturan ambang batas setiap tier alert."""
+    settings: dict[str, float] = {}
+    for alert_type, tiers in DEFAULT_TIERS.items():
+        for tier in ("lemah", "sedang", "kuat"):
+            if tier not in tiers:
+                continue
+            k = f"{alert_type}_{tier}"
+            stored = alerts_repo.get_alert_setting(conn, k)
+            settings[k] = float(stored) if stored else tiers[tier]
+    return settings
 
 
 def get_alert_settings_data(db_path: str | Path | None = None) -> dict[str, Any]:
     """Mengambil nilai konfigurasi ambang batas alert dan daftar kata kunci."""
     with connection.transaction(db_path) as conn:
         kws = keywords_repo.list_keywords(conn)
-        settings: dict[str, float] = {}
-        for alert_type, tiers in DEFAULT_TIERS.items():
-            for tier in ("lemah", "sedang", "kuat"):
-                if tier in tiers:
-                    k = f"{alert_type}_{tier}"
-                    stored = alerts_repo.get_alert_setting(conn, k)
-                    settings[k] = float(stored) if stored else tiers[tier]
+        settings = _load_tier_settings(conn)
 
     return {"settings": settings, "keywords": kws}
 

@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from app import config
 from app.db import connection, repos_repo, training_rows_repo
@@ -31,26 +34,29 @@ DATASET_CSV_PATH: Path = config.BASE_DIR / "data" / "training_dataset.csv"
 EXCLUSIONS_CSV_PATH: Path = config.BASE_DIR / "data" / "training_exclusions.csv"
 
 
+def _resolve_training_tag(clone_dest: Path, runner: GitRunner, manual_tag: str | None) -> str | None:
+    """Menentukan tag rilis stabil untuk repositori data latih."""
+    if manual_tag:
+        return manual_tag
+    raw_tags = runner.run(["tag", "--list"], cwd=clone_dest).splitlines()
+    tag_entries = []
+    for t in raw_tags:
+        t_clean = t.strip()
+        if t_clean:
+            try:
+                tag_entries.append((t_clean, release_date(clone_dest, t_clean, runner)))
+            except (RuntimeError, ValueError, OSError) as err:
+                logger.debug("Lewati tag %s: %s", t_clean, err)
+    return find_first_stable_release_tag(tag_entries)
+
+
 def _extract_git_metrics(
     clone_dest: Path,
     manual_tag: str | None,
     runner: GitRunner,
 ) -> tuple[str | None, str, str, float, int, float]:
     """Mengekstrak tag rilis, tanggal commit, durasi, kontributor, dan KLOC."""
-    chosen_tag = manual_tag
-    if not chosen_tag:
-        raw_tags = runner.run(["tag", "--list"], cwd=clone_dest).splitlines()
-        tag_entries = []
-        for t in raw_tags:
-            t_clean = t.strip()
-            if t_clean:
-                try:
-                    c_dt = release_date(clone_dest, t_clean, runner)
-                    tag_entries.append((t_clean, c_dt))
-                except Exception:
-                    pass
-        chosen_tag = find_first_stable_release_tag(tag_entries)
-
+    chosen_tag = _resolve_training_tag(clone_dest, runner, manual_tag)
     if not chosen_tag:
         return None, "", "", 0.0, 0, 0.0
 
@@ -91,9 +97,88 @@ def _is_history_gap_exceeded(first_dt_str: str, created_at_str: str) -> bool:
             gap_days = (created_dt - first_dt).total_seconds() / 86400.0
             gap_months = gap_days / 30.4375
             return gap_months > config.MAX_HISTORY_GAP_MONTHS
-    except Exception:
-        pass
+    except (ValueError, TypeError, KeyError) as err:
+        logger.debug("Gagal memeriksa gap riwayat repositori: %s", err)
     return False
+
+
+def _fetch_repo_metadata(
+    full_name: str, client: GitHubClient, db_path: str | Path | None, repo_id: int,
+) -> tuple[str | None, str | None]:
+    """Mengambil metadata repositori GitHub dan memeriksa kriteria fork/arsip/privat."""
+    try:
+        repo_info = client.get_repo(full_name)
+        if repo_info.get("fork") or repo_info.get("archived") or repo_info.get("private"):
+            _record_exclusion(db_path, repo_id, "fork/arsip/privat")
+            return None, "fork/arsip/privat"
+        created_at = repo_info.get("created_at")
+        if not created_at:
+            _record_exclusion(db_path, repo_id, "data pembuatan repositori tidak tersedia")
+            return None, "data pembuatan repositori tidak tersedia"
+        return created_at, None
+    except Exception as err:
+        _record_exclusion(db_path, repo_id, f"gagal api: {err}")
+        return None, f"gagal api: {err}"
+
+
+def _validate_repo_metrics(
+    tag: str | None, first_dt: str, rel_dt: str, dur: float,
+    n_contrib: int, kloc: float, repo_created_at: str | None,
+    full_name: str, client: GitHubClient,
+) -> tuple[int, str | None]:
+    """Memvalidasi aturan kualitas data latih terhadap metrik git dan issue/PR."""
+    if not tag:
+        return 0, "tidak ada rilis stabil"
+    if dur <= 0:
+        return 0, "durasi tidak valid"
+    if repo_created_at and _is_history_gap_exceeded(first_dt, repo_created_at):
+        return 0, "riwayat commit diimpor atau fork"
+
+    q_iss = f"repo:{full_name} is:issue created:<={rel_dt[:10]}"
+    q_prs = f"repo:{full_name} is:pr created:<={rel_dt[:10]}"
+    n_work = client.search_count(q_iss) + client.search_count(q_prs)
+    if n_work <= 0:
+        return 0, "jumlah issue+PR nol (data issue tidak tersedia atau riwayat diimpor)"
+    if not (1.0 <= dur <= 60.0 and 2 <= n_contrib <= 300 and 1.0 <= kloc <= 500.0):
+        return 0, "di luar kriteria numerik"
+    return n_work, None
+
+
+def _check_or_init_repo(
+    conn: Any, full_name: str, refresh: bool
+) -> tuple[int, bool]:
+    """Mengambil atau membuat entri repositori latih dan memeriksa apakah sudah terproses."""
+    repo_row = repos_repo.get_by_full_name(conn, full_name)
+    repo_id = repo_row["id"] if repo_row else repos_repo.add_repo(conn, full_name, "training")
+    already_done = bool(training_rows_repo.get_training_row_by_repo_id(conn, repo_id) and not refresh)
+    return repo_id, already_done
+
+
+def _extract_and_save_training_row(
+    clone_dest: Path,
+    manual_tag: str | None,
+    runner: GitRunner,
+    created_at: str | None,
+    full_name: str,
+    client: GitHubClient,
+    db_path: str | Path | None,
+    repo_id: int,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Mengekstrak metrik git, memvalidasi, dan menyimpan baris latih."""
+    tag, first_dt, rel_dt, dur, n_c, kloc = _extract_git_metrics(clone_dest, manual_tag, runner)
+    n_work, exc_reason = _validate_repo_metrics(tag, first_dt, rel_dt, dur, n_c, kloc, created_at, full_name, client)
+    if exc_reason:
+        _record_exclusion(db_path, repo_id, exc_reason, created_at)
+        return None, {"full_name": full_name, "reason": exc_reason}
+
+    with connection.transaction(db_path) as conn:
+        training_rows_repo.add_training_row(
+            conn, repo_id, tag, rel_dt, first_dt, dur, n_c, n_work, kloc, 1, None, created_at
+        )
+    return {
+        "full_name": full_name, "release_tag": tag, "duration_months": dur,
+        "n_contributors": n_c, "n_work_items": n_work, "kloc": kloc,
+    }, None
 
 
 def _process_single_repo(
@@ -107,74 +192,50 @@ def _process_single_repo(
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Memproses ekstraksi metrik satu repositori latih."""
     full_name = entry.get("full_name", "").strip()
-    manual_tag = entry.get("release_tag")
-
     if not validate_repo_name(full_name):
         return None, {"full_name": full_name, "reason": "format nama tidak valid"}
-
     if full_name.lower() in monitor_repos:
         return None, {"full_name": full_name, "reason": "beririsan dengan repositori pantau"}
 
     with connection.transaction(db_path) as conn:
-        repo_row = repos_repo.get_by_full_name(conn, full_name)
-        repo_id = repo_row["id"] if repo_row else repos_repo.add_repo(conn, full_name, "training")
-        existing = training_rows_repo.get_training_row_by_repo_id(conn, repo_id)
-        if existing and not refresh:
+        repo_id, already_done = _check_or_init_repo(conn, full_name, refresh)
+        if already_done:
             return None, None
 
-    try:
-        repo_info = client.get_repo(full_name)
-        if repo_info.get("fork") or repo_info.get("archived") or repo_info.get("private"):
-            _record_exclusion(db_path, repo_id, "fork/arsip/privat")
-            return None, {"full_name": full_name, "reason": "fork/arsip/privat"}
-
-        repo_created_at = repo_info.get("created_at")
-        if not repo_created_at:
-            _record_exclusion(db_path, repo_id, "data pembuatan repositori tidak tersedia")
-            return None, {"full_name": full_name, "reason": "data pembuatan repositori tidak tersedia"}
-    except Exception as err:
-        _record_exclusion(db_path, repo_id, f"gagal api: {err}")
-        return None, {"full_name": full_name, "reason": f"gagal api: {err}"}
+    created_at, err_reason = _fetch_repo_metadata(full_name, client, db_path, repo_id)
+    if err_reason:
+        return None, {"full_name": full_name, "reason": err_reason}
 
     clone_dest = _clone_or_fetch_repo(full_name, runner)
     try:
-        tag, first_dt, rel_dt, dur, n_contrib, kloc = _extract_git_metrics(clone_dest, manual_tag, runner)
-        if not tag:
-            _record_exclusion(db_path, repo_id, "tidak ada rilis stabil", repo_created_at)
-            return None, {"full_name": full_name, "reason": "tidak ada rilis stabil"}
-
-        if dur <= 0:
-            _record_exclusion(db_path, repo_id, "durasi tidak valid (<= 0)", repo_created_at)
-            return None, {"full_name": full_name, "reason": "durasi tidak valid"}
-
-        if _is_history_gap_exceeded(first_dt, repo_created_at):
-            _record_exclusion(db_path, repo_id, "riwayat commit diimpor atau fork", repo_created_at)
-            return None, {"full_name": full_name, "reason": "riwayat commit diimpor atau fork"}
-
-        q_iss = f"repo:{full_name} is:issue created:<={rel_dt[:10]}"
-        q_prs = f"repo:{full_name} is:pr created:<={rel_dt[:10]}"
-        n_work = client.search_count(q_iss) + client.search_count(q_prs)
-
-        if n_work <= 0:
-            reason = "jumlah issue+PR nol (data issue tidak tersedia atau riwayat diimpor)"
-            _record_exclusion(db_path, repo_id, reason, repo_created_at)
-            return None, {"full_name": full_name, "reason": reason}
-
-        if not (1.0 <= dur <= 60.0 and 2 <= n_contrib <= 300 and 1.0 <= kloc <= 500.0):
-            _record_exclusion(db_path, repo_id, "di luar kriteria numerik", repo_created_at)
-            return None, {"full_name": full_name, "reason": "di luar kriteria numerik"}
-
-        with connection.transaction(db_path) as conn:
-            training_rows_repo.add_training_row(
-                conn, repo_id, tag, rel_dt, first_dt, dur, n_contrib, n_work, kloc, 1, None, repo_created_at
-            )
-        return {
-            "full_name": full_name, "release_tag": tag, "duration_months": dur,
-            "n_contributors": n_contrib, "n_work_items": n_work, "kloc": kloc,
-        }, None
+        return _extract_and_save_training_row(
+            clone_dest, entry.get("release_tag"), runner, created_at, full_name, client, db_path, repo_id
+        )
     finally:
         if delete_clones and clone_dest.exists():
             shutil.rmtree(clone_dest, ignore_errors=True)
+
+
+def _process_training_repos_loop(
+    repos_config: list[dict[str, Any]], monitor_repos: list[str],
+    client: GitHubClient, runner: GitRunner, db_path: str | Path | None,
+    delete_clones: bool, refresh: bool,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Mengeksekusi iterasi pemrosesan setiap entri repositori latih."""
+    included, excluded = [], []
+    for entry in repos_config:
+        try:
+            inc, exc = _process_single_repo(entry, monitor_repos, client, runner, db_path, delete_clones, refresh)
+            if inc:
+                included.append(inc)
+            if exc:
+                excluded.append(exc)
+        except RateLimitError as rl:
+            excluded.append({"full_name": entry.get("full_name"), "reason": f"rate limit: {rl}"})
+            break
+        except Exception as e:
+            excluded.append({"full_name": entry.get("full_name"), "reason": f"error: {e}"})
+    return included, excluded
 
 
 def build_training_data(
@@ -189,8 +250,7 @@ def build_training_data(
         raise FileNotFoundError(f"Berkas {TRAINING_REPOS_PATH} tidak ditemukan.")
 
     with open(TRAINING_REPOS_PATH, "r", encoding="utf-8") as f:
-        meta = json.load(f)
-    repos_config = meta.get("repos", [])
+        repos_config = json.load(f).get("repos", [])
     if not repos_config:
         return {
             "status": "error",
@@ -205,24 +265,12 @@ def build_training_data(
         if refresh:
             training_rows_repo.delete_training_rows(conn)
 
-    results_included, results_excluded = [], []
-    for entry in repos_config:
-        try:
-            inc, exc = _process_single_repo(entry, monitor_repos, client, runner, db_path, delete_clones, refresh)
-            if inc:
-                results_included.append(inc)
-            if exc:
-                results_excluded.append(exc)
-        except RateLimitError as rl:
-            results_excluded.append({"full_name": entry.get("full_name"), "reason": f"rate limit: {rl}"})
-            break
-        except Exception as e:
-            results_excluded.append({"full_name": entry.get("full_name"), "reason": f"error: {e}"})
-
+    results_included, results_excluded = _process_training_repos_loop(
+        repos_config, monitor_repos, client, runner, db_path, delete_clones, refresh
+    )
     _export_training_csvs(results_included, results_excluded)
     return {
-        "status": "success",
-        "n_included": len(results_included),
+        "status": "success", "n_included": len(results_included),
         "n_excluded": len(results_excluded),
         "warning_insufficient": len(results_included) < config.MIN_TRAINING_ROWS,
     }

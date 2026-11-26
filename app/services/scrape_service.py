@@ -1,12 +1,15 @@
 """Layanan scraping incremental repositori pantau, sentimen, dan pembatasan data."""
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger(__name__)
 
 from app import config
 from app.db import (
@@ -78,16 +81,18 @@ def _resolve_labels(
     if counter[0] < 50:
         try:
             raw = client.get_issue(full_name, number)
-            labels = [lbl.get("name") for lbl in raw.get("labels", []) if lbl.get("name")]
+            if not isinstance(raw, dict):
+                return []
+            labels = [lbl.get("name") for lbl in raw.get("labels", []) if isinstance(lbl, dict) and lbl.get("name")]
             is_pr = 1 if "pull_request" in raw else 0
-            issues_repo.save_issue(
-                conn, repo_id, number, is_pr, labels,
-                raw.get("state", "open"), raw.get("created_at", ""), raw.get("updated_at", "")
-            )
+            state = str(raw.get("state") or "open")
+            c_at = str(raw.get("created_at") or "")
+            u_at = str(raw.get("updated_at") or "")
+            issues_repo.save_issue(conn, repo_id, number, is_pr, labels, state, c_at, u_at)
             counter[0] += 1
             return labels
-        except Exception:
-            pass
+        except Exception as err:
+            logger.debug("Gagal mengambil issue #%s untuk label: %s", number, err)
     return []
 
 
@@ -117,6 +122,19 @@ def _sync_issues(
     )
 
 
+def _record_comment_stats(
+    conn: sqlite3.Connection, repo_id: int, created_at: str,
+    label: str, cleaned: str, keywords: list[str],
+) -> None:
+    """Mencatat statistik harian dan frekuensi kata kunci untuk komentar baru."""
+    stat_date = to_stat_date(created_at)
+    n_pos = 1 if label == "positif" else 0
+    n_neu = 1 if label == "netral" else 0
+    n_neg = 1 if label == "negatif" else 0
+    daily_stats_repo.upsert_daily_stats(conn, repo_id, stat_date, 1, n_pos, n_neu, n_neg)
+    keywords_repo.record_keyword_hits(conn, repo_id, stat_date, cleaned, keywords)
+
+
 def _process_comment_entry(
     conn: sqlite3.Connection,
     repo_id: int,
@@ -131,9 +149,7 @@ def _process_comment_entry(
 ) -> bool:
     """Memvalidasi, menganalisis, dan menyimpan satu komentar GitHub."""
     created_at = c.get("created_at", "")
-    if not created_at or (floor and created_at <= floor):
-        return False
-    if is_bot_user(c.get("user")):
+    if not created_at or (floor and created_at <= floor) or is_bot_user(c.get("user")):
         return False
 
     cid = c.get("id")
@@ -153,12 +169,7 @@ def _process_comment_entry(
         sentiment_score=score, sentiment_label=label,
     )
     if inserted:
-        stat_date = to_stat_date(created_at)
-        n_pos = 1 if label == "positif" else 0
-        n_neu = 1 if label == "netral" else 0
-        n_neg = 1 if label == "negatif" else 0
-        daily_stats_repo.upsert_daily_stats(conn, repo_id, stat_date, 1, n_pos, n_neu, n_neg)
-        keywords_repo.record_keyword_hits(conn, repo_id, stat_date, cleaned, keywords)
+        _record_comment_stats(conn, repo_id, created_at, label, cleaned, keywords)
     return inserted
 
 
@@ -217,6 +228,27 @@ def _sync_releases(conn: sqlite3.Connection, repo_id: int, full_name: str, clien
     return new_count
 
 
+def _sync_all_streams(
+    conn: sqlite3.Connection, repo_id: int, full_name: str, client: GitHubClient,
+    analyzer: Any, keywords: list[str], backfill_iso: str, issue_fetch_counter: list[int],
+) -> tuple[int, int]:
+    """Menyinkronkan aliran issues, komentar, rilis, dan melakukan pemangkasan."""
+    st_iss = scrape_state_repo.get_scrape_state(conn, repo_id, "issues")
+    since_iss = (st_iss.get("last_updated_at") if st_iss else None) or backfill_iso
+    _sync_issues(conn, repo_id, full_name, client, since_iss)
+
+    new_ic = _sync_comments_stream(conn, repo_id, full_name, "issue_comment", client, analyzer, keywords, backfill_iso, issue_fetch_counter)
+    new_rc = _sync_comments_stream(conn, repo_id, full_name, "review_comment", client, analyzer, keywords, backfill_iso, issue_fetch_counter)
+    new_rels = _sync_releases(conn, repo_id, full_name, client)
+
+    new_floor = comments_repo.prune_comments(conn, repo_id, max_comments=config.MAX_COMMENTS_PER_REPO)
+    if new_floor:
+        scrape_state_repo.upsert_scrape_state(conn, repo_id, "issue_comments", floor_created_at=new_floor)
+        scrape_state_repo.upsert_scrape_state(conn, repo_id, "review_comments", floor_created_at=new_floor)
+
+    return new_ic + new_rc, new_rels
+
+
 def scrape_single_repo(
     repo: dict[str, Any],
     client: GitHubClient,
@@ -224,7 +256,6 @@ def scrape_single_repo(
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Menjalankan scraping incremental satu repositori dalam satu transaksi."""
-    repo_id = repo["id"]
     full_name = repo["full_name"]
     now_utc = datetime.now(timezone.utc)
     backfill_iso = (now_utc - timedelta(days=config.BACKFILL_DAYS)).isoformat()
@@ -233,33 +264,69 @@ def scrape_single_repo(
     with connection.transaction(db_path) as conn:
         kw_rows = keywords_repo.list_keywords(conn)
         keywords = [k["word"] for k in kw_rows]
-
-        # 1. Aliran issues
-        st_iss = scrape_state_repo.get_scrape_state(conn, repo_id, "issues")
-        since_iss = (st_iss.get("last_updated_at") if st_iss else None) or backfill_iso
-        _sync_issues(conn, repo_id, full_name, client, since_iss)
-
-        # 2. Aliran komentar
-        new_ic = _sync_comments_stream(conn, repo_id, full_name, "issue_comment", client, analyzer, keywords, backfill_iso, issue_fetch_counter)
-        new_rc = _sync_comments_stream(conn, repo_id, full_name, "review_comment", client, analyzer, keywords, backfill_iso, issue_fetch_counter)
-        total_comments = new_ic + new_rc
-
-        # 3. Aliran rilis
-        new_rels = _sync_releases(conn, repo_id, full_name, client)
-
-        # 4. Pembatasan data (pruning)
-        new_floor = comments_repo.prune_comments(conn, repo_id, max_comments=config.MAX_COMMENTS_PER_REPO)
-        if new_floor:
-            scrape_state_repo.upsert_scrape_state(conn, repo_id, "issue_comments", floor_created_at=new_floor)
-            scrape_state_repo.upsert_scrape_state(conn, repo_id, "review_comments", floor_created_at=new_floor)
+        tot_c, new_rels = _sync_all_streams(
+            conn, repo["id"], full_name, client, analyzer, keywords, backfill_iso, issue_fetch_counter
+        )
 
     return {
-        "full_name": full_name,
-        "status": "berhasil",
-        "new_comments": total_comments,
-        "new_releases": new_rels,
-        "error": None,
+        "full_name": full_name, "status": "berhasil",
+        "new_comments": tot_c, "new_releases": new_rels, "error": None,
     }
+
+
+def _process_scrape_target(
+    r: dict[str, Any], client: GitHubClient, analyzer: Any, db_path: str | Path | None,
+) -> tuple[dict[str, Any], bool, bool]:
+    """Mengeksekusi scraping satu repositori pantau dengan penanganan error terisolasi."""
+    try:
+        res = scrape_single_repo(r, client, analyzer, db_path)
+        return res, False, False
+    except RateLimitError as rl:
+        return {"full_name": r["full_name"], "status": "dilewati", "error": str(rl), "new_comments": 0, "new_releases": 0}, True, False
+    except AuthError:
+        raise
+    except Exception as ex:
+        return {"full_name": r["full_name"], "status": "gagal", "error": str(ex), "new_comments": 0, "new_releases": 0}, False, False
+
+
+def _finish_scrape_job(
+    conn: sqlite3.Connection, job_id: int, results: list[dict[str, Any]], tot_c: int, tot_r: int
+) -> str:
+    """Menyelesaikan status tugas scraping pada tabel job_runs."""
+    final_status = "gagal" if all(r["status"] == "gagal" for r in results) else ("sebagian" if any(r["status"] != "berhasil" for r in results) else "berhasil")
+    job_runs_repo.finish_job(conn, job_id, final_status, tot_c, tot_r, {"results": results})
+    return final_status
+
+
+def _run_scrape_loop(
+    target_repos: list[dict[str, Any]],
+    client: GitHubClient,
+    analyzer: Any,
+    db_path: str | Path | None,
+    job_id: int,
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Iterasi scraping repositori dengan penanganan rate limit dan otentikasi."""
+    results: list[dict[str, Any]] = []
+    tot_comments, tot_releases = 0, 0
+    hit_rate_limit = False
+
+    for r in target_repos:
+        if hit_rate_limit:
+            results.append({"full_name": r["full_name"], "status": "dilewati", "error": "rate limit"})
+            continue
+        try:
+            res, hit_rl, _ = _process_scrape_target(r, client, analyzer, db_path)
+            tot_comments += res.get("new_comments", 0)
+            tot_releases += res.get("new_releases", 0)
+            results.append(res)
+            if hit_rl:
+                hit_rate_limit = True
+        except AuthError as ae:
+            results.append({"full_name": r["full_name"], "status": "gagal", "error": str(ae)})
+            with connection.transaction(db_path) as conn:
+                job_runs_repo.finish_job(conn, job_id, "gagal", tot_comments, tot_releases, {"results": results, "error": str(ae)})
+            raise
+    return results, tot_comments, tot_releases
 
 
 def scrape_all_monitor_repos(
@@ -276,38 +343,12 @@ def scrape_all_monitor_repos(
         target_repos = repos_repo.list_repos(conn, kind="monitor", active_only=True)
         job_id = job_runs_repo.start_job(conn, "scrape", trigger)
 
-    results: list[dict[str, Any]] = []
-    tot_comments, tot_releases = 0, 0
-    hit_rate_limit = False
+    results, tot_comments, tot_releases = _run_scrape_loop(target_repos, client, analyzer, db_path, job_id)
 
-    for i, r in enumerate(target_repos):
-        if hit_rate_limit:
-            results.append({"full_name": r["full_name"], "status": "dilewati", "error": "rate limit"})
-            continue
-        try:
-            res = scrape_single_repo(r, client, analyzer, db_path)
-            tot_comments += res["new_comments"]
-            tot_releases += res["new_releases"]
-            results.append(res)
-        except RateLimitError as rl:
-            hit_rate_limit = True
-            results.append({"full_name": r["full_name"], "status": "dilewati", "error": str(rl)})
-        except AuthError as ae:
-            results.append({"full_name": r["full_name"], "status": "gagal", "error": str(ae)})
-            with connection.transaction(db_path) as conn:
-                job_runs_repo.finish_job(conn, job_id, "gagal", tot_comments, tot_releases, {"results": results, "error": str(ae)})
-            raise
-        except Exception as ex:
-            results.append({"full_name": r["full_name"], "status": "gagal", "error": str(ex)})
-
-    final_status = "gagal" if all(r["status"] == "gagal" for r in results) else ("sebagian" if any(r["status"] != "berhasil" for r in results) else "berhasil")
     with connection.transaction(db_path) as conn:
-        job_runs_repo.finish_job(conn, job_id, final_status, tot_comments, tot_releases, {"results": results})
+        final_status = _finish_scrape_job(conn, job_id, results, tot_comments, tot_releases)
 
     return {
-        "job_id": job_id,
-        "status": final_status,
-        "new_comments": tot_comments,
-        "new_releases": tot_releases,
-        "results": results,
+        "job_id": job_id, "status": final_status, "new_comments": tot_comments,
+        "new_releases": tot_releases, "results": results,
     }

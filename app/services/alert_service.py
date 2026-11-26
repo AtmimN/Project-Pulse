@@ -23,12 +23,45 @@ except Exception:
 def _get_active_tiers(conn: Any) -> dict[str, Any]:
     """Mengambil konfigurasi ambang batas alert kustom jika tersedia di database."""
     raw = alerts_repo.get_alert_setting(conn, "alert_tiers")
-    if raw:
-        try:
-            return json.loads(raw)
-        except Exception:
-            pass
-    return {}
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def _save_and_queue_alert(
+    conn: Any, rid: int, r_name: str, c: dict[str, Any], target_date: str
+) -> dict[str, Any] | None:
+    """Menyimpan satu alert ke basis data dan memasukkannya ke antrean pengiriman pelanggan."""
+    aid = alerts_repo.add_alert(
+        conn, rid, c["alert_type"], c["strength"], c["detail"], target_date, c["dedupe_key"]
+    )
+    if not aid:
+        return None
+    c["id"] = aid
+    c["repo_name"] = r_name
+    for s in alerts_repo.get_subscribers_for_alert(conn, rid, c["strength"]):
+        alerts_repo.queue_alert_delivery(conn, aid, s["chat_id"])
+    return c
+
+
+def _eval_single_monitor_repo_alerts(
+    conn: Any, r: dict[str, Any], target_date: str, custom_tiers: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Mengevaluasi seluruh aturan alert untuk satu repositori pantau."""
+    rid = r["id"]
+    d_stats = [dict(w) for w in conn.execute("SELECT * FROM daily_stats WHERE repo_id = ?", (rid,)).fetchall()]
+    kw_daily = [dict(w) for w in conn.execute("SELECT * FROM keyword_daily WHERE repo_id = ?", (rid,)).fetchall()]
+    rels = [dict(w) for w in conn.execute("SELECT * FROM releases WHERE repo_id = ?", (rid,)).fetchall()]
+
+    saved: list[dict[str, Any]] = []
+    for c in evaluate_all_rules(rid, d_stats, kw_daily, rels, target_date, custom_tiers):
+        res = _save_and_queue_alert(conn, rid, r["full_name"], c, target_date)
+        if res:
+            saved.append(res)
+    return saved
 
 
 def evaluate_and_save_alerts(
@@ -42,27 +75,28 @@ def evaluate_and_save_alerts(
     with connection.transaction(db_path) as conn:
         repos = repos_repo.list_repos(conn, kind="monitor", active_only=True)
         custom_tiers = _get_active_tiers(conn)
-
         for r in repos:
-            rid = r["id"]
-            d_stats = [dict(w) for w in conn.execute("SELECT * FROM daily_stats WHERE repo_id = ?", (rid,)).fetchall()]
-            kw_daily = [dict(w) for w in conn.execute("SELECT * FROM keyword_daily WHERE repo_id = ?", (rid,)).fetchall()]
-            rels = [dict(w) for w in conn.execute("SELECT * FROM releases WHERE repo_id = ?", (rid,)).fetchall()]
-
-            candidates = evaluate_all_rules(rid, d_stats, kw_daily, rels, target_date, custom_tiers)
-            for c in candidates:
-                aid = alerts_repo.add_alert(
-                    conn, rid, c["alert_type"], c["strength"], c["detail"], target_date, c["dedupe_key"]
-                )
-                if aid:
-                    c["id"] = aid
-                    c["repo_name"] = r["full_name"]
-                    saved_alerts.append(c)
-                    subs = alerts_repo.get_subscribers_for_alert(conn, rid, c["strength"])
-                    for s in subs:
-                        alerts_repo.queue_alert_delivery(conn, aid, s["chat_id"])
+            saved_alerts.extend(_eval_single_monitor_repo_alerts(conn, r, target_date, custom_tiers))
 
     return saved_alerts
+
+
+def _backtest_single_repo(
+    r: dict[str, Any], today: Any, days: int, custom_tiers: dict[str, Any], conn: Any
+) -> list[dict[str, Any]]:
+    """Menjalankan evaluasi mundur untuk satu repositori."""
+    rid = r["id"]
+    d_stats = [dict(w) for w in conn.execute("SELECT * FROM daily_stats WHERE repo_id = ?", (rid,)).fetchall()]
+    kw_daily = [dict(w) for w in conn.execute("SELECT * FROM keyword_daily WHERE repo_id = ?", (rid,)).fetchall()]
+    rels = [dict(w) for w in conn.execute("SELECT * FROM releases WHERE repo_id = ?", (rid,)).fetchall()]
+
+    candidates = []
+    for d_offset in range(days, -1, -1):
+        cur_date_str = (today - timedelta(days=d_offset)).strftime("%Y-%m-%d")
+        for item in evaluate_all_rules(rid, d_stats, kw_daily, rels, cur_date_str, custom_tiers):
+            item["repo_name"] = r["full_name"]
+            candidates.append(item)
+    return candidates
 
 
 def backtest_alerts(
@@ -84,16 +118,7 @@ def backtest_alerts(
 
         all_candidates: list[dict[str, Any]] = []
         for r in repos:
-            rid = r["id"]
-            d_stats = [dict(w) for w in conn.execute("SELECT * FROM daily_stats WHERE repo_id = ?", (rid,)).fetchall()]
-            kw_daily = [dict(w) for w in conn.execute("SELECT * FROM keyword_daily WHERE repo_id = ?", (rid,)).fetchall()]
-            rels = [dict(w) for w in conn.execute("SELECT * FROM releases WHERE repo_id = ?", (rid,)).fetchall()]
-
-            for d_offset in range(days, -1, -1):
-                cur_date_str = (today - timedelta(days=d_offset)).strftime("%Y-%m-%d")
-                for item in evaluate_all_rules(rid, d_stats, kw_daily, rels, cur_date_str, custom_tiers):
-                    item["repo_name"] = r["full_name"]
-                    all_candidates.append(item)
+            all_candidates.extend(_backtest_single_repo(r, today, days, custom_tiers, conn))
 
     rows = [{
         "date": c["alert_date"], "repo": c["repo_name"], "alert_type": c["alert_type"],
@@ -167,6 +192,24 @@ def _format_digest_text(conn: sqlite3.Connection, chat_id: Any, target_date: str
     return "\n".join(lines)
 
 
+def _send_single_digest(conn: Any, cid: int, target_date: str, notifier: Any) -> bool:
+    """Mengirim ringkasan digest ke satu pelanggan Telegram."""
+    if alerts_repo.is_digest_sent(conn, cid, target_date):
+        return False
+    msg = _format_digest_text(conn, cid, target_date)
+    if not notifier or not hasattr(notifier, "send_message"):
+        alerts_repo.record_digest(conn, cid, target_date)
+        return True
+    try:
+        if notifier.send_message(cid, msg):
+            alerts_repo.record_digest(conn, cid, target_date)
+            return True
+    except Exception as err:
+        import logging
+        logging.getLogger(__name__).warning("Gagal mengirim digest ke %s: %s", cid, err)
+    return False
+
+
 def send_daily_digest(digest_date: str | None = None, notifier: Any = None, db_path: str | Path | None = None) -> int:
     """Mengirim ringkasan digest harian kepada seluruh pelanggan aktif."""
     target_date = digest_date or datetime.now(APP_TZ).strftime("%Y-%m-%d")
@@ -174,18 +217,6 @@ def send_daily_digest(digest_date: str | None = None, notifier: Any = None, db_p
     with connection.transaction(db_path) as conn:
         subs = [dict(r) for r in conn.execute("SELECT chat_id FROM subscribers WHERE active = 1").fetchall()]
         for s in subs:
-            cid = s["chat_id"]
-            if alerts_repo.is_digest_sent(conn, cid, target_date):
-                continue
-            msg = _format_digest_text(conn, cid, target_date)
-            if not notifier or not hasattr(notifier, "send_message"):
-                alerts_repo.record_digest(conn, cid, target_date)
+            if _send_single_digest(conn, s["chat_id"], target_date, notifier):
                 sent_count += 1
-                continue
-            try:
-                if notifier.send_message(cid, msg):
-                    alerts_repo.record_digest(conn, cid, target_date)
-                    sent_count += 1
-            except Exception:
-                pass
     return sent_count

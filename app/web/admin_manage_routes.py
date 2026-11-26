@@ -1,11 +1,14 @@
 """Modul rute kelola repositori, pemantauan, scraping manual, dan alert panel admin."""
 from __future__ import annotations
 
+import logging
 from flask import current_app, flash, redirect, render_template, request, url_for
 
 from app.db import connection, repos_repo, subscribers_repo
 from app.services import admin_monitoring_service, admin_service
 from app.web.admin_routes import admin_bp
+
+logger = logging.getLogger(__name__)
 
 
 @admin_bp.route("/repositori", methods=["GET"])
@@ -101,7 +104,7 @@ def update_tiers():
             try:
                 admin_monitoring_service.update_alert_setting_val(key, float(val), db_target)
             except ValueError:
-                pass
+                current_app.logger.warning("Gagal mengurai nilai ambang %s: %s", key, val)
     flash("Nilai ambang alert berhasil disimpan.", "success")
     return redirect(url_for("admin.pengaturan_alert"))
 

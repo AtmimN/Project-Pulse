@@ -70,6 +70,24 @@ def delete_intent_service(tag: str) -> None:
     save_intents_file(data)
 
 
+def _load_training_specs(rows_by_name: dict[str, Any]) -> list[dict[str, Any]]:
+    """Membaca spesifikasi repositori latih dari berkas JSON jika tersedia."""
+    if not TRAINING_REPOS_PATH.exists():
+        return []
+    try:
+        with open(TRAINING_REPOS_PATH, "r", encoding="utf-8") as f:
+            t_json = json.load(f)
+        specs = []
+        for item in t_json.get("repos", []):
+            fn = item["full_name"]
+            spec = {"full_name": fn, "release_tag": item.get("release_tag")}
+            spec.update(rows_by_name.get(fn, {"included": "-", "exclusion_reason": "Belum diproses"}))
+            specs.append(spec)
+        return specs
+    except (json.JSONDecodeError, OSError, KeyError):
+        return []
+
+
 def get_repos_admin_data(db_path: str | Path | None = None) -> dict[str, Any]:
     """Mengambil status repositori pantau dan tampilan daftar repositori latih."""
     with connection.transaction(db_path) as conn:
@@ -85,19 +103,7 @@ def get_repos_admin_data(db_path: str | Path | None = None) -> dict[str, Any]:
         ).fetchall()
         rows_by_name = {tr["full_name"]: dict(tr) for tr in training_rows}
 
-    training_specs = []
-    if TRAINING_REPOS_PATH.exists():
-        try:
-            with open(TRAINING_REPOS_PATH, "r", encoding="utf-8") as f:
-                t_json = json.load(f)
-                for item in t_json.get("repos", []):
-                    fn = item["full_name"]
-                    spec = {"full_name": fn, "release_tag": item.get("release_tag")}
-                    spec.update(rows_by_name.get(fn, {"included": "-", "exclusion_reason": "Belum diproses"}))
-                    training_specs.append(spec)
-        except Exception:
-            pass
-
+    training_specs = _load_training_specs(rows_by_name)
     monitor_names = {r["full_name"].lower() for r in monitor_repos}
     training_names = {s["full_name"].lower() for s in training_specs}
     duplicates = list(monitor_names.intersection(training_names))

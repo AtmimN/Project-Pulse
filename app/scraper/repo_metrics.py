@@ -165,26 +165,29 @@ def count_non_empty_lines(content: bytes) -> int:
     return sum(1 for line in text.splitlines() if line.strip())
 
 
+def _count_tar_archive_lines(tar: tarfile.TarFile) -> int:
+    """Menghitung total baris tidak kosong dari berkas yang valid di dalam tar archive."""
+    lines = 0
+    for member in tar:
+        if not member.isfile() or not should_count_file(member.name, member.size):
+            continue
+        extracted = tar.extractfile(member)
+        if extracted:
+            lines += count_non_empty_lines(extracted.read())
+    return lines
+
+
 def kloc_at(repo_dir: Path, ref: str, runner: GitRunner | None = None) -> float:
     """Menghitung ribuan baris kode sumber (KLOC) pada referensi tag/commit tertentu."""
     r = runner or GitRunner()
     cmd = ["git", "archive", "--format=tar", ref]
     proc = subprocess.Popen(
-        cmd,
-        cwd=str(repo_dir),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        cmd, cwd=str(repo_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     total_lines = 0
     try:
         with tarfile.open(fileobj=proc.stdout, mode="r|") as tar:
-            for member in tar:
-                if not member.isfile():
-                    continue
-                if should_count_file(member.name, member.size):
-                    f = tar.extractfile(member)
-                    if f:
-                        total_lines += count_non_empty_lines(f.read())
+            total_lines = _count_tar_archive_lines(tar)
         proc.wait(timeout=120)
     finally:
         if proc.poll() is None:

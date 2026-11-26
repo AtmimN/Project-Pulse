@@ -8,6 +8,19 @@ from pathlib import Path
 BASE_DIR: Path = Path(__file__).resolve().parent.parent
 
 
+def _parse_env_file(path: Path) -> None:
+    """Membaca isi berkas .env baris demi baris secara aman."""
+    with open(path, "r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key, val = key.strip(), val.strip().strip("'\"")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
 def load_env_file(env_path: Path | None = None) -> None:
     """Membaca berkas .env ke dalam os.environ secara aman."""
     target_path = env_path or (BASE_DIR / ".env")
@@ -18,17 +31,7 @@ def load_env_file(env_path: Path | None = None) -> None:
         from dotenv import load_dotenv
         load_dotenv(target_path)
     except ImportError:
-        # Fallback sederhana jika python-dotenv belum terpasang
-        with open(target_path, "r", encoding="utf-8") as file:
-            for line in file:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, val = line.split("=", 1)
-                key = key.strip()
-                val = val.strip().strip("'\"")
-                if key and key not in os.environ:
-                    os.environ[key] = val
+        _parse_env_file(target_path)
 
 
 # Muat variabel lingkungan

@@ -46,6 +46,28 @@ def should_run_susulan(
             return True
 
 
+def _execute_cycle_steps(
+    trigger: str, today_str: str, db_path: str | Path | None,
+    notifier: Any, github_client: Any,
+) -> tuple[int, int, str, dict[str, Any]]:
+    """Mengeksekusi tahapan scraping, alert, pengiriman, dan digest."""
+    detail: dict[str, Any] = {"trigger": trigger, "target_date": today_str}
+    try:
+        scrape_res = scrape_all_monitor_repos(github_client=github_client, db_path=db_path, trigger=trigger)
+        tot_c = scrape_res.get("new_comments", 0)
+        tot_r = scrape_res.get("new_releases", 0)
+        detail["scraping"] = scrape_res.get("results", [])
+
+        alerts_list = evaluate_and_save_alerts(alert_date=today_str, db_path=db_path)
+        detail["alerts_generated"] = len(alerts_list)
+        detail["delivery"] = deliver_pending_alerts(notifier=notifier, db_path=db_path)
+        detail["digests_sent"] = send_daily_digest(digest_date=today_str, notifier=notifier, db_path=db_path)
+        return tot_c, tot_r, scrape_res.get("status", "berhasil"), detail
+    except Exception as err:
+        detail["error"] = str(err)
+        return 0, 0, "gagal", detail
+
+
 def run_cycle(
     trigger: str = "terjadwal",
     now: datetime | None = None,
@@ -58,48 +80,16 @@ def run_cycle(
     today_str = ref_now.strftime("%Y-%m-%d")
 
     with connection.transaction(db_path) as conn:
-        active = job_runs_repo.get_active_fresh_run(conn, "scrape_cycle")
-        if active:
+        if job_runs_repo.get_active_fresh_run(conn, "scrape_cycle"):
             raise RuntimeError("Eksekusi siklus scrape_cycle sedang berjalan.")
         job_id = job_runs_repo.start_job(conn, "scrape_cycle", trigger, started_at=ref_now)
 
-    tot_comments = 0
-    tot_releases = 0
-    detail: dict[str, Any] = {"trigger": trigger, "target_date": today_str}
-
-    try:
-        # 1. Scraping incremental
-        scrape_res = scrape_all_monitor_repos(github_client=github_client, db_path=db_path, trigger=trigger)
-        tot_comments = scrape_res.get("new_comments", 0)
-        tot_releases = scrape_res.get("new_releases", 0)
-        detail["scraping"] = scrape_res.get("results", [])
-
-        # 2. Evaluasi alert
-        alerts_list = evaluate_and_save_alerts(alert_date=today_str, db_path=db_path)
-        detail["alerts_generated"] = len(alerts_list)
-
-        # 3. Pengiriman alert
-        deliv_res = deliver_pending_alerts(notifier=notifier, db_path=db_path)
-        detail["delivery"] = deliv_res
-
-        # 4. Pengiriman digest harian
-        dig_count = send_daily_digest(digest_date=today_str, notifier=notifier, db_path=db_path)
-        detail["digests_sent"] = dig_count
-
-        final_status = scrape_res.get("status", "berhasil")
-    except Exception as err:
-        final_status = "gagal"
-        detail["error"] = str(err)
+    tot_c, tot_r, status, detail = _execute_cycle_steps(trigger, today_str, db_path, notifier, github_client)
 
     with connection.transaction(db_path) as conn:
-        job_runs_repo.finish_job(
-            conn, job_id, final_status, tot_comments, tot_releases, detail, finished_at=datetime.now(APP_TZ)
-        )
+        job_runs_repo.finish_job(conn, job_id, status, tot_c, tot_r, detail, finished_at=datetime.now(APP_TZ))
 
     return {
-        "job_id": job_id,
-        "status": final_status,
-        "new_comments": tot_comments,
-        "new_releases": tot_releases,
-        "detail": detail,
+        "job_id": job_id, "status": status, "new_comments": tot_c,
+        "new_releases": tot_r, "detail": detail,
     }

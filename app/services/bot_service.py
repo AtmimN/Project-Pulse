@@ -151,6 +151,21 @@ def get_repo_summary_service(repo_id: int, db_path: str | Path | None = None) ->
         return stats
 
 
+def _build_compare_conclusion(s1: dict[str, Any], s2: dict[str, Any], n1: str, n2: str) -> str | None:
+    """Menyusun narasi kesimpulan perbandingan jika data kedua repositori mencukupi."""
+    if not (s1.get("has_data") and s2.get("has_data")):
+        return None
+    c1, c2 = s1.get("comments_30d", 0), s2.get("comments_30d", 0)
+    if c1 < config.MIN_COMMENTS_FOR_SUMMARY or c2 < config.MIN_COMMENTS_FOR_SUMMARY:
+        return None
+    i1, i2 = s1["index_7d"], s2["index_7d"]
+    if i1 > i2:
+        return f"Indeks sentimen {n1} ({i1}) lebih tinggi dibanding {n2} ({i2})."
+    if i2 > i1:
+        return f"Indeks sentimen {n2} ({i2}) lebih tinggi dibanding {n1} ({i1})."
+    return f"Indeks sentimen {n1} dan {n2} sama kuat ({i1})."
+
+
 def compare_repos_service(r1_query: str, r2_query: str, db_path: str | Path | None = None) -> dict[str, Any]:
     """Membandingkan metrik sentimen dua repositori pantau."""
     with connection.transaction(db_path) as conn:
@@ -163,20 +178,8 @@ def compare_repos_service(r1_query: str, r2_query: str, db_path: str | Path | No
 
     s1 = get_repo_summary_service(res1["repo"]["id"], db_path)
     s2 = get_repo_summary_service(res2["repo"]["id"], db_path)
-
-    conclusion = None
-    if s1.get("has_data") and s2.get("has_data"):
-        c1 = s1.get("comments_30d", 0)
-        c2 = s2.get("comments_30d", 0)
-        if c1 >= config.MIN_COMMENTS_FOR_SUMMARY and c2 >= config.MIN_COMMENTS_FOR_SUMMARY:
-            i1, i2 = s1["index_7d"], s2["index_7d"]
-            n1, n2 = res1["repo"]["full_name"], res2["repo"]["full_name"]
-            if i1 > i2:
-                conclusion = f"Indeks sentimen {n1} ({i1}) lebih tinggi dibanding {n2} ({i2})."
-            elif i2 > i1:
-                conclusion = f"Indeks sentimen {n2} ({i2}) lebih tinggi dibanding {n1} ({i1})."
-            else:
-                conclusion = f"Indeks sentimen {n1} dan {n2} sama kuat ({i1})."
+    n1, n2 = res1["repo"]["full_name"], res2["repo"]["full_name"]
+    conclusion = _build_compare_conclusion(s1, s2, n1, n2)
 
     return {"status": "ok", "repo1_summary": s1, "repo2_summary": s2, "conclusion": conclusion}
 

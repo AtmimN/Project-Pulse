@@ -56,35 +56,34 @@ def _validate_input_numbers(n_members: int, n_tasks: int, kloc: float) -> None:
         raise ValueError("Ukuran proyek (KLOC) harus antara 0.1 dan 5000.")
 
 
+def _parse_estimation_inputs(payload: dict[str, Any]) -> tuple[int, int, float, Any, Any, Any]:
+    """Mengurai input form atau daftar anggota tim ke dalam variabel estimasi."""
+    members_list = payload.get("members")
+    if members_list and isinstance(members_list, list):
+        avg_info = average_member_levels(members_list)
+        return (
+            avg_info["n_members"], int(payload.get("n_tasks", 10)), float(payload.get("kloc", 5.0)),
+            avg_info["avg_acap_ord"], avg_info["avg_pcap_ord"], avg_info["avg_aexp_ord"],
+        )
+    return (
+        int(payload.get("n_members", 1)), int(payload.get("n_tasks", 10)), float(payload.get("kloc", 5.0)),
+        payload.get("acap", "nominal"), payload.get("pcap", "nominal"), payload.get("aexp", "nominal"),
+    )
+
+
 def calculate_estimation(
     payload: dict[str, Any],
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Menghitung estimasi proyek pada Model B (NASA93) dan konteks data GitHub."""
-    members_list = payload.get("members")
-    if members_list and isinstance(members_list, list):
-        avg_info = average_member_levels(members_list)
-        n_members = avg_info["n_members"]
-        acap_val = avg_info["avg_acap_ord"]
-        pcap_val = avg_info["avg_pcap_ord"]
-        aexp_val = avg_info["avg_aexp_ord"]
-    else:
-        n_members = int(payload.get("n_members", 1))
-        acap_val = payload.get("acap", "nominal")
-        pcap_val = payload.get("pcap", "nominal")
-        aexp_val = payload.get("aexp", "nominal")
-
-    n_tasks = int(payload.get("n_tasks", 10))
-    kloc = float(payload.get("kloc", 5.0))
+    n_members, n_tasks, kloc, acap_val, pcap_val, aexp_val = _parse_estimation_inputs(payload)
     _validate_input_numbers(n_members, n_tasks, kloc)
 
-    # 1. Model B
     acap_ord = float(ORDINAL_MAP.get(str(acap_val).lower(), acap_val if isinstance(acap_val, (int, float)) else 3))
     pcap_ord = float(ORDINAL_MAP.get(str(pcap_val).lower(), pcap_val if isinstance(pcap_val, (int, float)) else 3))
     aexp_ord = float(ORDINAL_MAP.get(str(aexp_val).lower(), aexp_val if isinstance(aexp_val, (int, float)) else 3))
-    model_b_res = _calc_model_b(kloc, acap_ord, pcap_ord, aexp_ord, n_members)
 
-    # 2. Konteks Data GitHub (Analisis Beban Kerja & Benchmark Durasi)
+    model_b_res = _calc_model_b(kloc, acap_ord, pcap_ord, aexp_ord, n_members)
     workload_res = _calc_workload(n_members, n_tasks, db_path)
     bench_res = _calc_duration_benchmark(db_path)
 
@@ -93,16 +92,11 @@ def calculate_estimation(
         "workload": workload_res,
         "benchmark_duration": bench_res,
         "input_summary": {
-            "n_members": n_members,
-            "n_tasks": n_tasks,
-            "kloc": kloc,
-            "acap": acap_val,
-            "pcap": pcap_val,
-            "aexp": aexp_val,
+            "n_members": n_members, "n_tasks": n_tasks, "kloc": kloc,
+            "acap": acap_val, "pcap": pcap_val, "aexp": aexp_val,
         },
     }
 
-    # Simpan hasil kalkulasi ke tabel estimations
     with connection.transaction(db_path) as conn:
         estimations_repo.save_estimation(conn, payload, response)
 
@@ -152,6 +146,16 @@ def _calc_model_b(
     }
 
 
+def _get_workload_dist(conn: Any) -> list[float]:
+    """Mengambil sebaran rasio tugas per kontributor dari baris data latih."""
+    dist = []
+    for r in training_rows_repo.list_training_rows(conn, included_only=True):
+        c, w = r.get("n_contributors"), r.get("n_work_items")
+        if c and w:
+            dist.append(float(w) / float(c))
+    return dist
+
+
 def _calc_workload(
     n_members: int,
     n_tasks: int,
@@ -161,10 +165,8 @@ def _calc_workload(
     dist: list[float] = []
     try:
         with connection.transaction(db_path) as conn:
-            rows = training_rows_repo.list_training_rows(conn, included_only=True)
-            for r in rows:
-                if r.get("n_contributors") and r.get("n_work_items"):
-                    dist.append(float(r["n_work_items"]) / float(r["n_contributors"]))
-    except Exception:
-        pass
+            dist = _get_workload_dist(conn)
+    except Exception as err:
+        import logging
+        logging.getLogger(__name__).debug("Gagal memuat distribusi beban data latih: %s", err)
     return analyze_workload(n_members, n_tasks, dist if dist else None)

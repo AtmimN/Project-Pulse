@@ -90,6 +90,55 @@ def check_lonjakan_negatif(
     }
 
 
+def _calc_release_diff(
+    daily_stats: list[dict[str, Any]], rel_dt: datetime, tot_post: int, neg_post: int
+) -> tuple[float, float, float]:
+    """Menghitung selisih proporsi komentar negatif pra dan pasca rilis."""
+    pre_s = (rel_dt - timedelta(days=30)).strftime("%Y-%m-%d")
+    pre_e = (rel_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    tot_pre, _, neg_pre = _calc_window_stats(_filter_stats_by_date(daily_stats, pre_s, pre_e))
+    prop_post = neg_post / float(tot_post)
+    prop_pre = (neg_pre / float(tot_pre)) if tot_pre > 0 else 0.0
+    return round(prop_post - prop_pre, 4), prop_post, prop_pre
+
+
+def _eval_single_release(
+    rel: dict[str, Any], daily_stats: list[dict[str, Any]], alert_date: str,
+    ref_dt: datetime, repo_id: int, cfg: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Mengevaluasi satu rilis apakah memicu peningkatan proporsi komentar negatif."""
+    if rel.get("is_draft") or rel.get("draft"):
+        return None
+    pub_str = str(rel.get("published_at", ""))[:10]
+    if not pub_str:
+        return None
+    try:
+        rel_dt = datetime.fromisoformat(pub_str)
+    except (ValueError, TypeError):
+        return None
+    if not (0 <= (ref_dt - rel_dt).days <= cfg.get("days_window", 3)):
+        return None
+
+    tot_post, _, neg_post = _calc_window_stats(_filter_stats_by_date(daily_stats, pub_str, alert_date))
+    if tot_post < cfg["min_comments"]:
+        return None
+
+    diff, prop_post, prop_pre = _calc_release_diff(daily_stats, rel_dt, tot_post, neg_post)
+    strength = determine_strength(diff, cfg["lemah"], cfg["sedang"], cfg["kuat"])
+    if not strength:
+        return None
+
+    tag = str(rel.get("tag", ""))
+    return {
+        "repo_id": repo_id, "alert_type": "rilis_bermasalah", "strength": strength,
+        "alert_date": alert_date, "dedupe_key": f"rilis_bermasalah:{repo_id}:{alert_date}:{tag}",
+        "detail": {
+            "tag": tag, "diff": diff, "prop_post": round(prop_post, 4),
+            "prop_pre": round(prop_pre, 4), "comments_post": tot_post,
+        },
+    }
+
+
 def check_rilis_bermasalah(
     daily_stats: list[dict[str, Any]],
     releases: list[dict[str, Any]],
@@ -103,40 +152,9 @@ def check_rilis_bermasalah(
     candidates: list[dict[str, Any]] = []
 
     for rel in releases:
-        if rel.get("is_draft") or rel.get("draft"):
-            continue
-        pub_str = str(rel.get("published_at", ""))[:10]
-        if not pub_str:
-            continue
-        try:
-            rel_dt = datetime.fromisoformat(pub_str)
-        except Exception:
-            continue
-        if not (0 <= (ref_dt - rel_dt).days <= cfg.get("days_window", 3)):
-            continue
-
-        tot_post, _, neg_post = _calc_window_stats(_filter_stats_by_date(daily_stats, pub_str, alert_date))
-        if tot_post < cfg["min_comments"]:
-            continue
-
-        pre_start = (rel_dt - timedelta(days=30)).strftime("%Y-%m-%d")
-        pre_end = (rel_dt - timedelta(days=1)).strftime("%Y-%m-%d")
-        tot_pre, _, neg_pre = _calc_window_stats(_filter_stats_by_date(daily_stats, pre_start, pre_end))
-
-        prop_post = neg_post / float(tot_post)
-        prop_pre = (neg_pre / float(tot_pre)) if tot_pre > 0 else 0.0
-        diff = round(prop_post - prop_pre, 4)
-        strength = determine_strength(diff, cfg["lemah"], cfg["sedang"], cfg["kuat"])
-        if strength:
-            tag = str(rel.get("tag", ""))
-            candidates.append({
-                "repo_id": repo_id, "alert_type": "rilis_bermasalah", "strength": strength,
-                "alert_date": alert_date, "dedupe_key": f"rilis_bermasalah:{repo_id}:{alert_date}:{tag}",
-                "detail": {
-                    "tag": tag, "diff": diff, "prop_post": round(prop_post, 4),
-                    "prop_pre": round(prop_pre, 4), "comments_post": tot_post,
-                },
-            })
+        res = _eval_single_release(rel, daily_stats, alert_date, ref_dt, repo_id, cfg)
+        if res:
+            candidates.append(res)
     return candidates
 
 

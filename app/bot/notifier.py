@@ -20,6 +20,30 @@ async def _dispatch_send(bot: Any, chat_id: int | str, text: str) -> bool:
     return True
 
 
+def _run_send(bot: Any, chat_id: int | str, text: str) -> bool:
+    """Mengeksekusi coroutine pengiriman dengan menangani event loop yang sedang berjalan."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return bool(pool.submit(asyncio.run, _dispatch_send(bot, chat_id, text)).result())
+        return asyncio.run(_dispatch_send(bot, chat_id, text))
+    except RuntimeError:
+        return asyncio.run(_dispatch_send(bot, chat_id, text))
+
+
+def _handle_send_error(err: Exception, chat_id: int | str, db_path: str | Path | None) -> None:
+    """Menangani error pengiriman pesan Telegram termasuk pemblokiran bot."""
+    err_msg = str(err).lower()
+    if "forbidden" in err_msg or "blocked" in err_msg:
+        logger.warning("Pelanggan %s memblokir bot, menandai nonaktif.", chat_id)
+        with connection.transaction(db_path) as conn:
+            subscribers_repo.set_active(conn, int(chat_id), 0)
+    else:
+        logger.error("Gagal mengirim pesan Telegram (%s).", type(err).__name__)
+
+
 def send_text(
     chat_id: int | str,
     text: str,
@@ -34,46 +58,13 @@ def send_text(
         return False
 
     try:
-        from telegram.error import Forbidden, RetryAfter, TelegramError
-    except ImportError:
-        Forbidden = Exception
-        RetryAfter = Exception
-        TelegramError = Exception
-
-    try:
-        if bot_client:
-            bot = bot_client
-        else:
+        bot = bot_client
+        if not bot:
             from telegram import Bot
             bot = Bot(token=bot_token)
-
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Jika event loop sudah aktif di thread ini (misal dalam context asyncio)
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    success = pool.submit(asyncio.run, _dispatch_send(bot, chat_id, text)).result()
-                    return bool(success)
-            else:
-                return asyncio.run(_dispatch_send(bot, chat_id, text))
-        except RuntimeError:
-            return asyncio.run(_dispatch_send(bot, chat_id, text))
-
-    except Forbidden:
-        logger.warning("Pelanggan %s memblokir bot, menandai sebagai nonaktif.", chat_id)
-        with connection.transaction(db_path) as conn:
-            subscribers_repo.set_active(conn, int(chat_id), 0)
-        return False
-    except RetryAfter as err:
-        logger.warning("Batas laju Telegram (RetryAfter %s detik).", getattr(err, "retry_after", 0))
-        return False
-    except (TelegramError, Exception) as err:
-        err_msg = str(err).lower()
-        if "forbidden" in err_msg or "blocked" in err_msg:
-            with connection.transaction(db_path) as conn:
-                subscribers_repo.set_active(conn, int(chat_id), 0)
-        logger.error("Gagal mengirim pesan Telegram (%s).", type(err).__name__)
+        return _run_send(bot, chat_id, text)
+    except Exception as err:
+        _handle_send_error(err, chat_id, db_path)
         return False
 
 

@@ -75,6 +75,7 @@ def ensure_monitor_repos_loaded(conn: sqlite3.Connection, json_path: Any = None)
             fn = r.get("full_name", "").strip()
             if fn and not get_by_full_name(conn, fn):
                 add_repo(conn, fn, kind="monitor", active=1)
-    except Exception:
-        pass
+    except (json.JSONDecodeError, OSError, KeyError) as err:
+        import logging
+        logging.getLogger(__name__).warning("Gagal memuat repositori pantau awal: %s", err)
     return list_repos(conn, kind="monitor", active_only=True)

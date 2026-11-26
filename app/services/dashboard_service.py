@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,28 @@ from app.db import alerts_repo, connection, estimations_repo, repos_repo, traini
 from app.estimator.model_a import METRICS_A_PATH
 from app.estimator.model_b import METRICS_B_PATH
 
+logger = logging.getLogger(__name__)
+
+
+def _calc_fallback_typical_duration(db_path: str | Path | None) -> dict[str, Any] | None:
+    """Menghitung nilai kuartil durasi jika belum tercatat di berkas metrik."""
+    try:
+        with connection.transaction(db_path) as conn:
+            rows = training_rows_repo.list_training_rows(conn, included_only=True)
+            durs = sorted([float(r["duration_months"]) for r in rows if r["duration_months"] is not None])
+            if not durs:
+                return None
+            import numpy as np
+            q25 = round(float(np.percentile(durs, 25)), 2)
+            q75 = round(float(np.percentile(durs, 75)), 2)
+            return {
+                "median": round(float(np.median(durs)), 2),
+                "q25": q25, "q75": q75, "iqr": round(float(q75 - q25), 2),
+            }
+    except Exception as err:
+        logger.debug("Gagal menghitung fallback durasi tipikal: %s", err)
+        return None
+
 
 def get_regression_a_data(db_path: str | Path | None = None) -> dict[str, Any] | None:
     """Mengambil metrik dan diagnostik Model A beserta jumlah data latih."""
@@ -19,7 +42,8 @@ def get_regression_a_data(db_path: str | Path | None = None) -> dict[str, Any] |
     try:
         with open(METRICS_A_PATH, "r", encoding="utf-8") as f:
             metrics = json.load(f)
-    except Exception:
+    except Exception as err:
+        logger.debug("Gagal menghitung fallback durasi tipikal: %s", err)
         return None
 
     try:
@@ -30,24 +54,10 @@ def get_regression_a_data(db_path: str | Path | None = None) -> dict[str, Any] |
 
     metrics["n_training_rows"] = n_rows
     metrics["warning_insufficient"] = n_rows < config.MIN_TRAINING_ROWS
-
     if "typical_duration" not in metrics:
-        try:
-            with connection.transaction(db_path) as conn:
-                rows = training_rows_repo.list_training_rows(conn, included_only=True)
-                durs = sorted([float(r["duration_months"]) for r in rows if r["duration_months"] is not None])
-                if durs:
-                    import numpy as np
-                    q25 = round(float(np.percentile(durs, 25)), 2)
-                    q75 = round(float(np.percentile(durs, 75)), 2)
-                    metrics["typical_duration"] = {
-                        "median": round(float(np.median(durs)), 2),
-                        "q25": q25,
-                        "q75": q75,
-                        "iqr": round(float(q75 - q25), 2),
-                    }
-        except Exception:
-            pass
+        typ = _calc_fallback_typical_duration(db_path)
+        if typ:
+            metrics["typical_duration"] = typ
 
     return metrics
 
@@ -74,7 +84,8 @@ def get_regression_b_data() -> dict[str, Any] | None:
     try:
         with open(METRICS_B_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except Exception as err:
+        logger.debug("Gagal menghitung fallback durasi tipikal: %s", err)
         return None
 
 
@@ -190,17 +201,22 @@ def get_recent_estimations(limit: int = 5, db_path: str | Path | None = None) ->
         return estimations_repo.list_recent_estimations(conn, limit=limit)
 
 
+def _decode_detail(obj: dict[str, Any]) -> dict[str, Any]:
+    """Mengurai string detail menjadi dict JSON jika memungkinkan."""
+    raw = obj.get("detail")
+    if isinstance(raw, str):
+        try:
+            obj["detail"] = json.loads(raw)
+        except (json.JSONDecodeError, TypeError) as err:
+            logger.debug("Gagal mendecode detail alert: %s", err)
+    return obj
+
+
 def get_recent_alerts(limit: int = 10, db_path: str | Path | None = None) -> list[dict[str, Any]]:
     """Mengambil riwayat alert terbaru tanpa identitas pengguna."""
     with connection.transaction(db_path) as conn:
         rows = alerts_repo.list_recent_alerts(conn, limit=limit)
-    for r in rows:
-        if isinstance(r.get("detail"), str):
-            try:
-                r["detail"] = json.loads(r["detail"])
-            except Exception:
-                pass
-    return rows
+    return [_decode_detail(r) for r in rows]
 
 
 def get_scheduler_status(db_path: str | Path | None = None) -> dict[str, Any]:
@@ -212,10 +228,4 @@ def get_scheduler_status(db_path: str | Path | None = None) -> dict[str, Any]:
     if not row:
         return {"has_run": False, "schedule": schedule_str, "last_run": None}
 
-    d = dict(row)
-    if isinstance(d.get("detail"), str):
-        try:
-            d["detail"] = json.loads(d["detail"])
-        except Exception:
-            pass
-    return {"has_run": True, "schedule": schedule_str, "last_run": d}
+    return {"has_run": True, "schedule": schedule_str, "last_run": _decode_detail(dict(row))}

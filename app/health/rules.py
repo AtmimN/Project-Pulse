@@ -28,6 +28,24 @@ class HealthDimension:
     value_display: str
 
 
+def _speed_status_and_reason(percentile: float, context: str, months_val: float) -> tuple[str, str]:
+    """Menentukan status dan kalimat alasan dimensi kecepatan."""
+    if percentile >= SPEED_RED_THRESHOLD:
+        return "merah", (
+            f"Tinggi ({percentile:.0f}%): {context} ({months_val:.1f} bulan) "
+            f"berada di persentil >= {SPEED_RED_THRESHOLD:.0f}% repositori data latih."
+        )
+    if percentile >= SPEED_YELLOW_THRESHOLD:
+        return "kuning", (
+            f"Sedang ({percentile:.0f}%): {context} ({months_val:.1f} bulan) "
+            f"berada di persentil {SPEED_YELLOW_THRESHOLD:.0f}–{SPEED_RED_THRESHOLD:.0f}% repositori data latih."
+        )
+    return "hijau", (
+        f"Normal ({percentile:.0f}%): {context} ({months_val:.1f} bulan) "
+        f"di bawah persentil {SPEED_YELLOW_THRESHOLD:.0f}% repositori data latih."
+    )
+
+
 def evaluate_speed(
     percentile: float | None,
     is_elapsed: bool = False,
@@ -36,39 +54,16 @@ def evaluate_speed(
     """Mengevaluasi dimensi kecepatan (persentil durasi atau lama berjalan)."""
     if percentile is None or months_val is None:
         return HealthDimension(
-            name="kecepatan",
-            status="abu-abu",
+            name="kecepatan", status="abu-abu",
             reason="Data snapshot durasi atau commit pertama tidak tersedia.",
             value_display="Tidak ada data",
         )
 
     context = "lama berjalan" if is_elapsed else "durasi sampai rilis stabil pertama"
-    val_disp = f"{months_val:.1f} bln (persentil {percentile:.0f}%)"
-
-    if percentile >= SPEED_RED_THRESHOLD:
-        status = "merah"
-        reason = (
-            f"Tinggi ({percentile:.0f}%): {context} ({months_val:.1f} bulan) "
-            f"berada di persentil >= {SPEED_RED_THRESHOLD:.0f}% repositori data latih."
-        )
-    elif percentile >= SPEED_YELLOW_THRESHOLD:
-        status = "kuning"
-        reason = (
-            f"Sedang ({percentile:.0f}%): {context} ({months_val:.1f} bulan) "
-            f"berada di persentil {SPEED_YELLOW_THRESHOLD:.0f}–{SPEED_RED_THRESHOLD:.0f}% repositori data latih."
-        )
-    else:
-        status = "hijau"
-        reason = (
-            f"Normal ({percentile:.0f}%): {context} ({months_val:.1f} bulan) "
-            f"di bawah persentil {SPEED_YELLOW_THRESHOLD:.0f}% repositori data latih."
-        )
-
+    status, reason = _speed_status_and_reason(percentile, context, months_val)
     return HealthDimension(
-        name="kecepatan",
-        status=status,
-        reason=reason,
-        value_display=val_disp,
+        name="kecepatan", status=status, reason=reason,
+        value_display=f"{months_val:.1f} bln (persentil {percentile:.0f}%)",
     )
 
 
@@ -114,6 +109,30 @@ def evaluate_workload(
     )
 
 
+def _mood_status_and_reason(
+    idx: float, strong_alert: bool, med_alert: bool
+) -> tuple[str, str]:
+    """Menentukan status dan alasan naratif dimensi suasana."""
+    if idx < SENTIMENT_RED_THRESHOLD or strong_alert:
+        reasons = []
+        if idx < SENTIMENT_RED_THRESHOLD:
+            reasons.append(f"indeks sentimen 30 hari ({idx:+.2f}) < {SENTIMENT_RED_THRESHOLD:.2f}")
+        if strong_alert:
+            reasons.append("terdapat alert tingkat 'kuat' dalam 14 hari terakhir")
+        return "merah", f"Perlu perhatian: {'; '.join(reasons)}."
+    if idx < SENTIMENT_YELLOW_THRESHOLD or med_alert:
+        reasons = []
+        if idx < SENTIMENT_YELLOW_THRESHOLD:
+            reasons.append(f"indeks sentimen 30 hari ({idx:+.2f}) < {SENTIMENT_YELLOW_THRESHOLD:.2f}")
+        if med_alert:
+            reasons.append("terdapat alert tingkat 'sedang' dalam 14 hari terakhir")
+        return "kuning", f"Waspada: {'; '.join(reasons)}."
+    return "hijau", (
+        f"Positif: indeks sentimen 30 hari ({idx:+.2f}) >= {SENTIMENT_YELLOW_THRESHOLD:.2f} "
+        "dan tidak ada alert sedang/kuat dalam 14 hari terakhir."
+    )
+
+
 def evaluate_mood(
     sentiment_index: float | None,
     comments_count: int,
@@ -124,42 +143,15 @@ def evaluate_mood(
     """Mengevaluasi dimensi suasana (indeks sentimen 30 hari dan alert 14 hari terakhir)."""
     if sentiment_index is None or comments_count < min_comments:
         return HealthDimension(
-            name="suasana",
-            status="abu-abu",
+            name="suasana", status="abu-abu",
             reason=f"Data komentar 30 hari belum cukup (n = {comments_count} komentar, minimal {min_comments}).",
             value_display=f"Data belum cukup (n = {comments_count})",
         )
 
-    val_disp = f"Indeks: {sentiment_index:+.2f} ({comments_count} komentar)"
-
-    if sentiment_index < SENTIMENT_RED_THRESHOLD or has_strong_alert_14d:
-        status = "merah"
-        reasons = []
-        if sentiment_index < SENTIMENT_RED_THRESHOLD:
-            reasons.append(f"indeks sentimen 30 hari ({sentiment_index:+.2f}) < {SENTIMENT_RED_THRESHOLD:.2f}")
-        if has_strong_alert_14d:
-            reasons.append("terdapat alert tingkat 'kuat' dalam 14 hari terakhir")
-        reason = f"Perlu perhatian: {'; '.join(reasons)}."
-    elif sentiment_index < SENTIMENT_YELLOW_THRESHOLD or has_medium_alert_14d:
-        status = "kuning"
-        reasons = []
-        if sentiment_index < SENTIMENT_YELLOW_THRESHOLD:
-            reasons.append(f"indeks sentimen 30 hari ({sentiment_index:+.2f}) < {SENTIMENT_YELLOW_THRESHOLD:.2f}")
-        if has_medium_alert_14d:
-            reasons.append("terdapat alert tingkat 'sedang' dalam 14 hari terakhir")
-        reason = f"Waspada: {'; '.join(reasons)}."
-    else:
-        status = "hijau"
-        reason = (
-            f"Positif: indeks sentimen 30 hari ({sentiment_index:+.2f}) >= {SENTIMENT_YELLOW_THRESHOLD:.2f} "
-            "dan tidak ada alert sedang/kuat dalam 14 hari terakhir."
-        )
-
+    status, reason = _mood_status_and_reason(sentiment_index, has_strong_alert_14d, has_medium_alert_14d)
     return HealthDimension(
-        name="suasana",
-        status=status,
-        reason=reason,
-        value_display=val_disp,
+        name="suasana", status=status, reason=reason,
+        value_display=f"Indeks: {sentiment_index:+.2f} ({comments_count} komentar)",
     )
 
 
